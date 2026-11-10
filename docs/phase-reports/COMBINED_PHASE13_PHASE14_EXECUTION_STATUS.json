@@ -1,0 +1,110 @@
+﻿{
+  "phase13": {
+    "status": "BLOCKED",
+    "gate": "PHASE13_ENGINEERING_GATE=BLOCKED",
+    "routeInventory": 73,
+    "workflowEvidenceLinks": 73,
+    "systematicPositiveRouteProbesPassed": 0,
+    "systematicPositiveRouteProbesPending": 73,
+    "negativeDenialsPassed": 365,
+    "campus": {
+      "sameCampusPositive": 2,
+      "wrongCampusDenied": 2,
+      "applicabilityAssessed": 2,
+      "applicabilityPending": 70,
+      "explicitNotApplicable": 1
+    },
+    "foreignResource": {
+      "applicable": 62,
+      "passed": 1,
+      "pending": 61,
+      "explicitNotApplicable": 11
+    },
+    "themes": { "applicable": 78, "passed": 78, "screenshots": 78 },
+    "mysql": {
+      "command": "php tests/run-phase13-mysql.php --run",
+      "preflight": "PASS",
+      "testsPassed": 35,
+      "assertions": 3227,
+      "scannerGatedSkips": 1,
+      "concurrencyProbes": 8,
+      "workers": 16,
+      "objects": 253,
+      "migrations": 69,
+      "pendingReviewedMigrations": 0,
+      "ownershipFingerprint": "dea00d4011c05e37bbc229a803a7a5a16bc0ca82178ae5d65fc62e4e65640e7c"
+    },
+    "sqlite": { "command": "php tests/run-tests.php --sqlite", "passed": 337, "assertions": 7252, "mysqlOnlySkips": 4, "scannerEnabled": true },
+    "chromium": { "command": "npm.cmd exec playwright -- test --project=chromium", "passed": 43, "failed": 0, "skipped": 0, "themes": 6, "roleScreenCombinations": 78 },
+    "static": {
+      "phpstan": "PASS",
+      "pint": "PASS",
+      "phpSyntaxFiles": 561,
+      "typescript": "PASS",
+      "eslint": "PASS",
+      "prettier": "PASS",
+      "vitestPassed": 24,
+      "composerValidate": "PASS",
+      "composerPlatform": "PASS",
+      "composerAudit": "PASS",
+      "npmProductionAudit": "PASS: 0 vulnerabilities",
+      "npmFullAudit": "OWNER_DISPOSITION_PENDING: 10 moderate development-tool advisories",
+      "productionBuild": "PASS",
+      "gitDiffCheck": "PASS"
+    },
+    "remainingEngineering": [
+      "Execute a true positive HTTP action and persisted-effect case for each of the 73 manifest routes.",
+      "Assess campus applicability for the remaining 70 route rows and execute applicable same/foreign-campus cases.",
+      "Execute foreign-resource denial/no-mutation checks for the remaining 61 applicable route rows."
+    ],
+    "ownerDisposition": "10 moderate development-tool npm advisories remain pending explicit owner decision.",
+    "phase14": {
+      "status": "IN_PROGRESS",
+      "gate": "PHASE14_ENGINEERING_GATE=BLOCKED",
+      "reason": "A partial percentage gradebook foundation was implemented as independently testable work, but Phase 13 remains blocked and Phase 14 mandatory scope is incomplete.",
+      "tasks": [
+        { "id": "P14-GRADE-POLICY", "requirement": "Percentage policy and weighted categories", "status": "PARTIAL", "files": ["app/Domain/Grading/GradebookWorkflow.php", "app/Models/AcademicGradePolicy.php", "database/migrations/2026_11_06_000001_create_phase14_grading_foundation.php"], "tests": ["tests/Feature/Phase14GradebookFoundationTest.php"], "result": "PASS: exercised with isolated SQLite" },
+        { "id": "P14-GRADE-CALC", "requirement": "Deterministic weighted calculation", "status": "PARTIAL", "files": ["app/Domain/Grading/GradeCalculationEngine.php"], "tests": ["tests/Feature/Phase14GradebookFoundationTest.php"], "result": "PASS: integer-cent and basis-point arithmetic; only percentage mode implemented" },
+        { "id": "P14-GRADEBOOK", "requirement": "Manual gradebook entries and lifecycle", "status": "PARTIAL", "files": ["app/Domain/Grading/GradebookWorkflow.php", "app/Http/Controllers/Workspace/GradebookController.php", "routes/web.php", "resources/js/pages/workspace/academics/grades/"], "tests": ["tests/Feature/Phase14GradebookFoundationTest.php"], "result": "PASS: SQLite creation, revision, independent approval, publication snapshot and student visibility" },
+        { "id": "P14-SOURCE-SYNC", "requirement": "Assignment, quiz, and formal exam source synchronization", "status": "NOT_IMPLEMENTED", "files": ["app/Domain/Grading/GradebookWorkflow.php"], "tests": [], "result": "Non-manual sources fail closed pending approved/released source contracts" },
+        { "id": "P14-ACADEMIC-RECORDS", "requirement": "GPA/CGPA, standing, report cards, transcripts, certificates, appeals", "status": "NOT_IMPLEMENTED", "files": [], "tests": [], "result": "No Phase 14 implementation present" },
+        { "id": "P14-MYSQL", "requirement": "Guarded Phase 14 MySQL ownership and integration", "status": "BLOCKED", "files": [], "tests": [], "result": "No ignored .env.phase14.testing, guarded runner, or owner-verified Phase 14 test schema present; no MySQL operation attempted" },
+        { "id": "P14-RACES", "requirement": "Eight independent-session MySQL concurrency probes", "status": "NOT_IMPLEMENTED", "files": [], "tests": [], "result": "Not run; dedicated guarded infrastructure absent" },
+        { "id": "P14-BROWSER", "requirement": "Authenticated workflows and six-theme browser matrix", "status": "NOT_RUN", "files": ["resources/js/pages/workspace/academics/grades/"], "tests": [], "result": "Production build passed; no Phase 14 Playwright journey or screenshots executed" }
+      ],
+      "sourceDocuments": {
+        "userProvidedCombinedSpecification": "REVIEWED",
+        "repositoryOriginalBlueprintRoadmapAndPhase14Rd": "NOT_FOUND",
+        "availablePhase13Handoff": "docs/phase-reports/phase-13/PHASE_14_HANDOFF.md"
+      }
+    },
+    "latestExecution": {
+      "date": "2026-11-06",
+      "phase13": {
+        "gate": "PHASE13_ENGINEERING_GATE=BLOCKED",
+        "command": "php tests/run-tests.php --sqlite --filter=Phase13ExaminationRouteAuthorizationMatrixTest",
+        "exitCode": 0,
+        "testsPassed": 2,
+        "assertions": 2138,
+        "routesInManifest": 73,
+        "positiveRouteProbesVerified": 0,
+        "positiveRouteProbesPending": 73,
+        "reason": "Manifest and generic denial sweep passed; exhaustive positive action, campus applicability, and foreign-resource matrices remain incomplete."
+      },
+      "phase14": {
+        "gate": "PHASE14_ENGINEERING_GATE=BLOCKED",
+        "command": "php artisan test --filter=Phase14GradebookFoundationTest",
+        "exitCode": 0,
+        "testsPassed": 2,
+        "assertions": 69,
+        "mysql": "NOT RUN: dedicated Phase 14 guarded environment absent",
+        "playwright": "NOT RUN: no authenticated Phase 14 browser workflow executed"
+      },
+      "fullSqlite": { "command": "php tests/run-tests.php --sqlite", "exitCode": 0, "testsPassed": 333, "skipped": 10, "assertions": 7201 },
+      "frontend": { "typecheck": "PASS", "eslint": "PASS", "prettier": "PASS", "vitestPassed": 24, "productionBuild": "PASS" },
+      "php": { "phpstan": "PASS after final tenant-scope change", "pint": "PASS after all changed PHP files formatted", "syntax": "PASS, 12 touched PHP/migration/test files" },
+      "dependencyAudits": { "composer": "PASS, no advisories", "npmProduction": "PASS, zero vulnerabilities", "npmFull": "FAIL, 10 moderate development-tool advisories; owner disposition pending" },
+      "gitDiffCheck": "PASS before the last two documentation edits; rerun required"
+    }
+  }
+}

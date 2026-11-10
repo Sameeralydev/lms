@@ -1,0 +1,117 @@
+name: Phase 07 guarded learning-delivery quality gate
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  phase07:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ${{ secrets.PHASE07_MYSQL_ROOT_PASSWORD }}
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD}"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_mysql, pdo_sqlite, sqlite3, xml, zip
+          coverage: none
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install ClamAV and current signatures
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clamav clamav-freshclam
+          sudo freshclam
+
+      - name: Install dependencies and validate toolchain
+        run: |
+          composer validate --strict
+          composer install --no-interaction --prefer-dist
+          composer check-platform-reqs
+          npm ci
+
+      - name: Provision exact isolated Phase 07 schema and grant allowlist
+        env:
+          MYSQL_ROOT_PASSWORD: ${{ secrets.PHASE07_MYSQL_ROOT_PASSWORD }}
+          PHASE07_MYSQL_PASSWORD: ${{ secrets.PHASE07_MYSQL_PASSWORD }}
+        run: |
+          set -euo pipefail
+          [[ -n "$MYSQL_ROOT_PASSWORD" && -n "$PHASE07_MYSQL_PASSWORD" ]]
+          [[ "$PHASE07_MYSQL_PASSWORD" =~ ^[A-Za-z0-9_!@#%+=.,:-]{32,128}$ ]]
+          export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"
+          mysql --protocol=TCP --host=127.0.0.1 --user=root <<SQL
+          CREATE DATABASE techmentors_lms_phase07_test CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+          CREATE USER 'techmentors_phase07_test'@'127.0.0.1' IDENTIFIED BY '${PHASE07_MYSQL_PASSWORD}';
+          GRANT ALTER, CREATE, CREATE TEMPORARY TABLES, DELETE, DROP, INDEX, INSERT, LOCK TABLES, REFERENCES, SELECT, UPDATE ON techmentors_lms_phase07_test.* TO 'techmentors_phase07_test'@'127.0.0.1';
+          SQL
+          unset MYSQL_PWD
+
+      - name: Create private ignored runner environment
+        env:
+          PHASE07_MYSQL_PASSWORD: ${{ secrets.PHASE07_MYSQL_PASSWORD }}
+        run: |
+          set -euo pipefail
+          APP_KEY="$(php artisan key:generate --show)"
+          {
+            printf 'APP_ENV=testing\nAPP_DEBUG=false\nAPP_KEY=%s\n' "$APP_KEY"
+            printf 'DB_CONNECTION=mysql\nDB_HOST=127.0.0.1\nDB_PORT=3306\nDB_DATABASE=techmentors_lms_phase07_test\nDB_USERNAME=techmentors_phase07_test\nDB_PASSWORD="%s"\n' "$PHASE07_MYSQL_PASSWORD"
+            printf 'PHASE07_TEST_SCHEMA_DISPOSABLE=true\nCACHE_STORE=array\nQUEUE_CONNECTION=sync\nSESSION_DRIVER=array\nSESSION_ENCRYPT=true\n'
+            printf 'ADMISSIONS_DOCUMENT_SCANNER=clamav\nADMISSIONS_CLAMAV_BINARY=/usr/bin/clamscan\nADMISSIONS_CLAMAV_SIGNATURE_DIRECTORY=/var/lib/clamav\nADMISSIONS_SIGTOOL_BINARY=/usr/bin/sigtool\nADMISSIONS_CLAMAV_TIMEZONE=UTC\n'
+          } > .env.phase07.testing
+          chmod 600 .env.phase07.testing
+          git check-ignore --quiet .env.phase07.testing
+
+      - name: Run guarded Phase 07 MySQL 8.4 integration suite
+        run: php tests/run-tests.php --mysql-phase07
+
+      - name: Run isolated SQLite regression and static checks
+        run: |
+          set -euo pipefail
+          php tests/run-tests.php --sqlite
+          vendor/bin/phpstan analyse --no-progress --memory-limit=512M
+          vendor/bin/pint --test
+          find app bootstrap config database routes tests -name '*.php' -print0 | xargs -0 -n1 php -l
+          composer audit --no-interaction
+
+      - name: Run frontend checks and production build
+        run: |
+          set -euo pipefail
+          npm run typecheck
+          npm run lint
+          npm run format:check
+          npm run test:unit
+          npm audit --audit-level=high
+          npm run build
+
+      - name: Run scanner-enabled Chromium journeys
+        env:
+          E2E_CLAMAV_ENABLED: 'true'
+          E2E_CLAMAV_BINARY: /usr/bin/clamscan
+          E2E_CLAMAV_SIGNATURE_DIRECTORY: /var/lib/clamav
+          E2E_SIGTOOL_BINARY: /usr/bin/sigtool
+          E2E_CLAMAV_TIMEZONE: UTC
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:e2e

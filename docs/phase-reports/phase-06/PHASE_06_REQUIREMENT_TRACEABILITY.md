@@ -1,0 +1,40 @@
+# Phase 06 requirement traceability
+
+Verified 2026-10-26 against the original Phase 06 specification, current implementation, final guarded MySQL/SQLite output, scanner-enabled Chromium run, local quality checks, and read-only ownership inspection. PASS means the capability exists and the cited behavior was exercised. Limitations and later-phase scope remain explicit.
+
+| Original area | Result | Evidence |
+|---|---|---|
+| Modular curriculum domain and compatibility with Phases 03-05 | PASS | Curriculum records reuse the existing tenant, institution, program, catalog, course version, academic year, period, permissions, audit, and private document boundaries. Existing Phase 01-05 regression suites ran as part of both backend commands. |
+| Framework lifecycle and administration | PASS | Draft edit, lock-version checks, activation/retirement history, required outcomes, framework administrator assignment/revocation, protection of the last administrator, tenant permissions, and audit events are exercised by CurriculumManagementTest. |
+| Program curricula and completion requirements | PASS | Curricula link to programs and optional calendar/course-version references. Required/optional syllabus design and version-locked completion rules cover credits, contact hours, workload, courses, units, competencies, and milestones. |
+| Hierarchical syllabus and instructional planning | PASS | Bounded course/unit/topic/subtopic/objective/lesson hierarchy, order, required status, instruction/activity/assessment descriptions, workload, and academic pacing are implemented. Version comparisons and revision cloning preserve prior published snapshots. |
+| Learning outcomes and mapping | PASS | Framework outcomes and curriculum objectives map to syllabus nodes; coverage and missing-required-outcome findings derive from persisted design data. Cross-tenant references are rejected. No learner attainment is inferred. |
+| Competency frameworks and program requirements | PASS | Versioned competency frameworks support hierarchy, mastery descriptors/levels, evidence requirements, independent review and publication. Program-level requirements store expected level and evidence; the test verifies a missing curriculum competency is reported and the gap disappears only after node mapping. |
+| Prerequisites and pathways | PASS | Version-scoped prerequisite relationships validate same-tenant/version ownership and reject cycles; the pathway view is based on stored edges. |
+| Governance and approvals | PASS | Institution/framework scoped, effective-dated review policy, reviewer eligibility and assignment, minimum independent reviewers, required separation of author/reviewer/publisher, changes-requested/rejection notes, required checklist completion, immutable review snapshots, and audit are covered. |
+| Curriculum quality | PASS | Quality findings and coverage are computed from stored outcomes, required competencies, structure and plan requirements. The UI does not present invented student outcomes or production KPIs. |
+| Resource and material references | PASS | Tenant/institution scoped, version/node/outcome-associated resource records support source attribution, accessibility metadata and optional approved private academic documents. Private resource download is scanner-gated, audited, and denied cross-tenant. |
+| Templates and reuse | PASS | Explicitly shared published templates expose limited metadata; adopting tenants receive their own editable draft rather than a mutable cross-tenant reference. |
+| Import and export | PASS | Bounded CSV and schema-versioned JSON parsing, non-mutating preview, sanitized row errors, hierarchy/reference validation, queued progress/retry and version-locked confirmation are implemented. Published export is tenant scoped. |
+| Search, catalog, pagination and analytics | PASS | Server-side filtering and pagination use real tenant data; curriculum design coverage and quality analytics are data-derived. |
+| Responsive workspace and six themes | PASS | Chromium workflows exercised the six theme choices, persisted choices, responsive layouts, keyboard navigation and selected axe checks. The scanner-enabled browser run passed all 23 tests. |
+| Tenancy, authorization, privacy and audit | PASS | Tenant and institution context, explicit permissions, campus/program scope, composite ownership constraints, authorization on mutations/downloads/exports, immutable published state and negative cross-tenant cases are verified. |
+| Schema integrity and concurrency | PASS | The dedicated MySQL suite verifies migration state, indexes/FKs, transactions, row locks, offer capacity, and concurrent curriculum edit/approval/publication. No destructive reset was used. |
+| Antivirus and private files | PASS | Guarded MySQL tests exercised real ClamAV clean and EICAR outcomes; scanner failures remain fail-closed. The scanner-enabled Playwright transfer workflow released a clean certificate only after scan completion. |
+| Measured local performance | PASS | A synthetic 220-node syllabus used 39 SQL queries for the detail response: 85.33 ms on MySQL 8.4.11 and 75.90 ms on SQLite in the final full runs. These are local test-harness measurements, not production SLOs. |
+| Accessibility and educational usability | PASS with manual limits disclosed | Automated axe checks, keyboard navigation, responsive layouts and theme checks passed on selected journeys. Manual screen-reader, RTL/localized, exhaustive control-by-control and zoom testing remains a documented follow-up; no WCAG conformance is claimed. |
+| Local regression and code quality | PASS | MySQL 197/2,153, SQLite 191/2,065 with six explained skips, Vitest 6, Playwright 23, PHPStan, Pint, TypeScript, ESLint, Prettier, audits and production build passed. See the test report. |
+| Hosted CI and production deployment/performance | NOT RUN | No hosted runner, production database, production load, or production p75 Core Web Vitals run was performed. Local evidence is not represented as hosted or production evidence. |
+| Phase 07+ modules | DEFERRED | Course delivery, enrollment, attendance, assessments/results, learner attainment and interoperability remain outside Phase 06. No Phase 07 implementation was started. |
+
+## Recovery and defect traceability
+
+- **Concurrency probe failure:** Read-only inspection after the first failing run showed the Phase 06 schema stable, the existing ownership manifest matching, and no fixture rows remaining. The child fixture created users but no active tenant memberships or roles. The real workflow correctly rejected the edit with a ValidationException. The test fixture now creates a temporary role with only curriculum manage/review/publish permissions, assigns active memberships, and verifies authorization rows are cleaned. Application authorization was not weakened. The MySQL race then passed with 11 assertions in isolation and passed in the full suite.
+- **Program competency evidence gap:** The capability existed but lacked a complete behavior assertion. The feature test now verifies the stored evidence requirement and curriculum gap before/after mapping; it passed on both engines and is included in the final totals.
+- **PHPStan diagnostics:** Safe failure reporting in the race probe now reports only stage, exception class and a bounded code/SQLSTATE. It does not emit exception text, SQL, credentials or fixture payloads.
+- **PowerShell npm shim:** PowerShell policy blocked npm.ps1. Checks were run through npm.cmd; no execution policy or machine configuration was changed.
+- **Playwright scanner skip:** The default scanner-unavailable mode skipped the scanner-dependent transfer journey. The final run explicitly enabled the locally configured ClamAV test mode using scanner settings from the ignored Phase 06 environment and passed 23/23 tests.
+
+## Interpretation
+
+All mandatory local Phase 06 functionality and regression gates are verified. Manual accessibility research, hosted CI, production operations and production performance remain deployment/usability follow-ups, not claims of certification. No Phase 07 code is included.

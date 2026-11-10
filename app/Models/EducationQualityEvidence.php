@@ -1,0 +1,20 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class EducationQualityEvidence extends AcademicRecord
+{
+    /** @return BelongsTo<EducationQualityObjective, $this> */
+    public function objective(): BelongsTo
+    {
+        return $this->belongsTo(EducationQualityObjective::class, 'quality_objective_id');
+    }
+
+    /** @return BelongsTo<EducationQualityReview, $this> */
+    public function review(): BelongsTo
+    {
+        return $this->belongsTo(EducationQualityReview::class, 'quality_review_id');
+    }
+}

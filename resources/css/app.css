@@ -1,0 +1,584 @@
+@import 'tailwindcss';
+
+@source '../js/**/*.{ts,tsx}';
+
+@theme {
+    --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --color-navy-950: #071a32;
+    --color-navy-900: #0b2547;
+    --color-brand-blue: #155eef;
+    --color-tenant-brand: #155eef;
+    --color-tenant-accent: #06b6d4;
+    --color-brand-link: #155eef;
+    --color-brand-blue-hover: #124dcc;
+    --color-brand-action: #155eef;
+    --color-brand-action-hover: #124dcc;
+    --color-brand-blue-soft: #eaf1ff;
+    --color-cyan-50: #eafcff;
+    --color-cyan-300: #67e8f9;
+    --color-cyan-500: #06b6d4;
+    --color-cyan-800: #155e75;
+    --color-silver-100: #f3f5f8;
+    --color-silver-200: #e2e7ef;
+    --color-silver-400: #a9b4c4;
+    --color-canvas: #f7f9fc;
+    --color-surface: #ffffff;
+    --color-surface-soft: #f2f5fa;
+    --color-border: #dce3ed;
+    --color-text-primary: #14243a;
+    --color-text-secondary: #52637a;
+    --color-text-muted: #5f7188;
+    --color-warning-text: #7c2d12;
+    --color-focus: #155eef;
+    --color-danger: #b42318;
+    --shadow-card: 0 18px 48px -34px rgb(7 26 50 / 28%);
+}
+
+@theme inline {
+    --color-brand-primary: var(--color-brand-action);
+}
+
+[data-theme='executive-navy'] {
+    --color-navy-950: #071a32;
+    --color-brand-blue: #155eef;
+    --color-brand-blue-hover: #124dcc;
+    --color-brand-action: #155eef;
+    --color-brand-action-hover: #124dcc;
+    --color-brand-link: var(--color-brand-blue);
+    --color-brand-blue-soft: #eaf1ff;
+    --color-canvas: #f7f9fc;
+    --color-surface: #ffffff;
+    --color-surface-soft: #f2f5fa;
+    --color-border: #dce3ed;
+    --color-text-primary: #14243a;
+    --color-text-secondary: #52637a;
+    --color-text-muted: #5f7188;
+    --color-warning-text: #7c2d12;
+    --color-focus: #155eef;
+}
+
+[data-theme='academic-emerald'] {
+    --color-navy-950: #073b31;
+    --color-brand-blue: #08785d;
+    --color-brand-blue-hover: #06644d;
+    --color-brand-action: #08785d;
+    --color-brand-action-hover: #06644d;
+    --color-brand-link: var(--color-brand-blue);
+    --color-brand-blue-soft: #e8f6f0;
+    --color-cyan-500: #12a68a;
+    --color-canvas: #f5faf7;
+    --color-surface: #ffffff;
+    --color-surface-soft: #edf5f0;
+    --color-border: #d5e5dc;
+    --color-text-primary: #15372d;
+    --color-text-secondary: #4c6d61;
+    --color-text-muted: #5c7367;
+    --color-warning-text: #7c2d12;
+    --color-focus: #08785d;
+}
+
+[data-theme='modern-indigo'] {
+    --color-navy-950: #1e1b4b;
+    --color-brand-blue: #4f46e5;
+    --color-brand-blue-hover: #4338ca;
+    --color-brand-action: #4f46e5;
+    --color-brand-action-hover: #4338ca;
+    --color-brand-link: var(--color-brand-blue);
+    --color-brand-blue-soft: #eef0ff;
+    --color-cyan-500: #6366f1;
+    --color-canvas: #f7f7fc;
+    --color-surface: #ffffff;
+    --color-surface-soft: #f0f0f8;
+    --color-border: #dedff0;
+    --color-text-primary: #202044;
+    --color-text-secondary: #555879;
+    --color-text-muted: #686b8a;
+    --color-warning-text: #7c2d12;
+    --color-focus: #4f46e5;
+}
+
+[data-theme='warm-ivory'] {
+    --color-navy-950: #35251f;
+    --color-brand-blue: #a6402b;
+    --color-brand-blue-hover: #8f3524;
+    --color-brand-action: #a6402b;
+    --color-brand-action-hover: #8f3524;
+    --color-brand-link: var(--color-brand-blue);
+    --color-brand-blue-soft: #f8ebe5;
+    --color-cyan-500: #bf6b43;
+    --color-canvas: #faf7f0;
+    --color-surface: #fffdf8;
+    --color-surface-soft: #f3eee4;
+    --color-border: #e5dbcc;
+    --color-text-primary: #352a24;
+    --color-text-secondary: #67574d;
+    --color-text-muted: #78685d;
+    --color-warning-text: #78350f;
+    --color-focus: #a6402b;
+}
+
+[data-theme='graphite-dark'] {
+    color-scheme: dark;
+    --color-navy-950: #0b1018;
+    --color-brand-blue: #75a9ff;
+    --color-brand-blue-hover: #91baff;
+    --color-brand-action: #315d9e;
+    --color-brand-action-hover: #446caa;
+    --color-brand-link: color-mix(in srgb, var(--color-brand-blue) 25%, white);
+    --color-brand-blue-soft: #253449;
+    --color-cyan-500: #55c5d7;
+    --color-canvas: #11151b;
+    --color-surface: #1b212b;
+    --color-surface-soft: #252d38;
+    --color-border: #36404d;
+    --color-text-primary: #e8edf5;
+    --color-text-secondary: #bdc8d8;
+    --color-text-muted: #98a7ba;
+    --color-warning-text: #fbbf24;
+    --color-focus: #8bb8ff;
+    --color-danger: #ff938b;
+}
+
+[data-theme='midnight-violet'] {
+    color-scheme: dark;
+    --color-navy-950: #120f22;
+    --color-brand-blue: #b29cff;
+    --color-brand-blue-hover: #c3b2ff;
+    --color-brand-action: #6849a7;
+    --color-brand-action-hover: #7959ba;
+    --color-brand-link: color-mix(in srgb, var(--color-brand-blue) 25%, white);
+    --color-brand-blue-soft: #312b4a;
+    --color-cyan-500: #c084fc;
+    --color-canvas: #151321;
+    --color-surface: #1d1a2b;
+    --color-surface-soft: #28243a;
+    --color-border: #403a57;
+    --color-text-primary: #f0edfb;
+    --color-text-secondary: #c6bfdc;
+    --color-text-muted: #a59bbf;
+    --color-warning-text: #fcd34d;
+    --color-focus: #c3b2ff;
+    --color-danger: #ff9aaf;
+}
+
+@layer base {
+    html {
+        min-width: 320px;
+        scroll-behavior: smooth;
+    }
+
+    body {
+        min-width: 320px;
+        font-family: var(--font-sans);
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+    }
+
+    button,
+    input,
+    textarea,
+    select {
+        font: inherit;
+    }
+
+    :focus-visible {
+        outline: 2px solid var(--color-focus);
+        outline-offset: 3px;
+    }
+}
+
+@layer components {
+    .academic-calendar-year-card {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .academic-calendar-year-card details,
+    .academic-calendar-year-card section,
+    .academic-calendar-year-card form,
+    .academic-calendar-year-card label {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    .academic-calendar-year-card form {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .academic-calendar-year-card :is(input, select, textarea) {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    .learning-session-form {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    @media (min-width: 768px) {
+        .learning-session-form {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    .learning-session-form > * {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .learning-session-form :is(input, select, textarea) {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    .learning-assignment-form {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    @media (min-width: 768px) {
+        .learning-assignment-form {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (min-width: 1280px) {
+        .learning-assignment-form {
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+        }
+    }
+
+    .learning-assignment-form > * {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .learning-assignment-form :is(input, select, textarea) {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    .learning-release-form {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    @media (min-width: 640px) {
+        .learning-release-form {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (min-width: 1280px) {
+        .learning-release-form {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+    }
+
+    .learning-release-form > * {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .learning-release-form :is(input, select, textarea) {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    .learning-template-create-form {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    @media (min-width: 768px) {
+        .learning-template-create-form {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    .learning-template-create-form > * {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .learning-template-create-form :is(input, select, textarea) {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    .learning-template-rollover-form {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    @media (min-width: 768px) {
+        .learning-template-rollover-form {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    .learning-template-rollover-form > * {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .learning-template-library,
+    .learning-template-library-header,
+    .learning-template-list,
+    .learning-template-card {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .learning-template-library-header > * {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .learning-template-destination {
+        width: min(100%, 28rem);
+        flex: 1 1 18rem;
+    }
+
+    .learning-template-destination select {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .learning-template-library select {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .learning-template-list {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .learning-template-card {
+        overflow-wrap: anywhere;
+    }
+
+    .learning-template-card > div:first-child {
+        min-width: 0;
+    }
+
+    .learning-template-title {
+        min-width: 0;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+    }
+
+    .learning-template-version-form,
+    .learning-template-version-source {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .learning-template-version-source {
+        flex: 1 1 16rem;
+    }
+
+    .learning-template-version-source select {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .learning-analytics-filters {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    @media (min-width: 640px) {
+        .learning-analytics-filters {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (min-width: 1024px) {
+        .learning-analytics-filters {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+    }
+
+    .learning-analytics-filters > * {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .learning-analytics-filters :is(input, select) {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .curriculum-print-page {
+        width: min(100%, 64rem);
+        margin-inline: auto;
+        padding: 2rem;
+        color: var(--color-text-primary);
+        background: var(--color-surface);
+    }
+
+    .curriculum-print-actions {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-block-end: 2rem;
+    }
+
+    .curriculum-print-actions a,
+    .curriculum-print-actions button {
+        min-height: 2.75rem;
+        padding: 0.65rem 1rem;
+        border: 1px solid var(--color-border);
+        border-radius: 0.6rem;
+        font-weight: 600;
+    }
+
+    .curriculum-print-header {
+        padding-block-end: 1.5rem;
+        border-bottom: 2px solid var(--color-border);
+    }
+
+    .curriculum-print-header h1 {
+        margin-block: 0.4rem;
+        font-size: clamp(1.8rem, 4vw, 2.7rem);
+        font-weight: 700;
+    }
+
+    .curriculum-print-kicker,
+    .curriculum-print-muted {
+        color: var(--color-text-muted);
+        font-size: 0.875rem;
+    }
+
+    .curriculum-print-metadata {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+        gap: 0.75rem 1.5rem;
+        margin-block-start: 1.5rem;
+    }
+
+    .curriculum-print-metadata dt {
+        color: var(--color-text-muted);
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .curriculum-print-metadata dd {
+        margin: 0.2rem 0 0;
+        font-weight: 600;
+    }
+
+    .curriculum-print-page section {
+        margin-block: 1.5rem;
+    }
+
+    .curriculum-print-page h2 {
+        font-size: 1.35rem;
+        font-weight: 700;
+    }
+
+    .curriculum-print-outline,
+    .curriculum-print-children {
+        display: grid;
+        gap: 0.75rem;
+        padding-inline-start: 1.5rem;
+    }
+
+    .curriculum-print-node {
+        break-inside: avoid;
+        padding-block: 0.6rem;
+    }
+
+    .curriculum-print-node-heading {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+
+    .curriculum-print-node-heading h3 {
+        font-size: 1rem;
+        font-weight: 700;
+    }
+
+    .curriculum-print-node-type {
+        color: var(--color-text-muted);
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    .curriculum-print-footer {
+        margin-block-start: 2rem;
+        padding-block-start: 1rem;
+        border-top: 1px solid var(--color-border);
+    }
+
+    @media print {
+        body {
+            color: #111827 !important;
+            background: #fff !important;
+        }
+
+        .curriculum-print-page {
+            width: 100%;
+            max-width: none;
+            padding: 0;
+            color: #111827;
+            background: #fff;
+            font-size: 10pt;
+        }
+
+        .curriculum-print-page .no-print {
+            display: none !important;
+        }
+
+        .curriculum-print-page :is(h1, h2, h3, p, li, dd, dt, span, strong) {
+            color: #111827 !important;
+        }
+
+        .curriculum-print-node {
+            break-inside: avoid;
+        }
+
+        @page {
+            size: auto;
+            margin: 18mm;
+        }
+    }
+}
+
+.skip-link {
+    position: absolute;
+    z-index: 50;
+    top: 0.75rem;
+    left: 0.75rem;
+    transform: translateY(-180%);
+    border-radius: 0.5rem;
+    background: white;
+    padding: 0.75rem 1rem;
+    color: var(--color-navy-950);
+    font-weight: 600;
+    box-shadow: 0 4px 16px rgb(7 26 50 / 16%);
+}
+
+.skip-link:focus {
+    transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}

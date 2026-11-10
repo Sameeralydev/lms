@@ -1,0 +1,119 @@
+name: TechMentors Phase 03 quality gate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: phase01_ci_root_only
+          MYSQL_DATABASE: techmentors_lms_test
+          MYSQL_USER: phase01_ci_user
+          MYSQL_PASSWORD: phase01_ci_user_only
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pphase01_ci_root_only"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_mysql, pdo_sqlite, sqlite3, xml, zip
+          coverage: none
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Validate and install PHP dependencies
+        run: |
+          composer validate --strict
+          composer install --no-interaction --prefer-dist
+          composer check-platform-reqs
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Audit dependencies
+        run: |
+          composer audit --locked
+          npm audit --audit-level=low
+
+      - name: Format, type, and lint checks
+        run: |
+          find app bootstrap config database routes tests -name '*.php' -print0 | xargs -0 -n1 php -l
+          composer format:check
+          composer analyse
+          npm run format:check
+          npm run typecheck
+          npm run lint
+
+      - name: Unit and feature tests
+        env:
+          APP_ENV: testing
+          APP_DEBUG: 'false'
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ':memory:'
+          DB_URL: ''
+        run: |
+          npm run test:unit
+          composer test
+
+      - name: MySQL 8.4 integration tests on disposable database
+        env:
+          APP_ENV: testing
+          APP_DEBUG: 'false'
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: techmentors_lms_test
+          DB_USERNAME: phase01_ci_user
+          DB_PASSWORD: phase01_ci_user_only
+          CACHE_STORE: array
+          QUEUE_CONNECTION: sync
+          SESSION_DRIVER: array
+          SESSION_ENCRYPT: 'true'
+        run: |
+          composer test
+          php artisan migrate:status
+
+      - name: Build and browser checks
+        env:
+          APP_ENV: testing
+          APP_DEBUG: 'false'
+          APP_URL: http://127.0.0.1:8017
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: techmentors_lms_test
+          DB_USERNAME: phase01_ci_user
+          DB_PASSWORD: phase01_ci_user_only
+          DB_URL: ''
+          CACHE_STORE: file
+          QUEUE_CONNECTION: sync
+          SESSION_DRIVER: file
+          SESSION_ENCRYPT: 'true'
+          MAIL_MAILER: array
+        run: |
+          npm run build
+          npx playwright install --with-deps chromium
+          npm run test:e2e

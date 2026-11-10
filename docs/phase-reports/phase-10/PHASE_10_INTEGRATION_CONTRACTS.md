@@ -1,0 +1,8 @@
+# Phase 10 Integration Contracts
+
+- **Timetabling:** Phase 09 published timetable meetings and occurrence projection remain the source of scheduled classes. Phase 10 creates a unique attendance register per tenant/meeting/date; it does not introduce a timetable model.
+- **Enrollment/SIS:** Register creation snapshots confirmed section enrollments and links SIS student and enrollment identifiers. Effective-date reconciliation handles transfers and withdrawals while preserving the original register entries as historical evidence.
+- **Tenant/RBAC:** Tenant context and attendance permissions are required before reads or mutations; campus-scoped memberships are checked against register campus. Guardian access requires verified, non-revoked SIS guardian authority.
+- **Audit:** Administrative state changes use the existing audit recorder with safe metadata; entry changes also append revision records. The independent-session MySQL probes assert revision and audit/outbox invariants for concurrent transitions.
+- **Notifications:** Events are written transactionally into `attendance_outbox_events`. `attendance:outbox:dispatch` claims with a lease, performs bounded retry and emits an internal at-least-once event. Consumer de-duplication is by outbox ID; user-facing delivery resolves active tenant recipients and uses safe message content.
+- **Evidence storage:** Attendance justification evidence uploads enter tenant-scoped private quarantine with content hashes. Real ClamAV and signature metadata checks gate download and approval. Only clean evidence may be released; failure, stale signatures, malformed metadata or malware remains fail-closed.
