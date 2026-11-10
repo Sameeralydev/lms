@@ -28,3 +28,8 @@ This addendum records evidence collected during the current closure pass. Earlie
 ## GitHub publication safety
 
 The repository's existing `main` history tracks local runtime files under `storage/` (including ownership and migration-intent records, scanner configuration and generated traces). A normal push of that history would publish local operational data. The requested publication is therefore prepared as a separate sanitized root snapshot on `Projects`, excluding runtime storage and generated test output while leaving local `main` unchanged. See the final push verification in the handoff response.
+
+
+## Final rerun result ? 2026-11-10
+
+The corrected default-configuration command `php artisan test --compact` exited **0**: **355 passed, 4 skipped, 7,722 assertions**, duration 383.06 seconds. The earlier invocation with a duplicate `--configuration` option exited 1 despite reporting no failed assertions; it is not used as the passing evidence. The Phase 14 MySQL, concurrency, and complete-browser blockers listed above are unchanged.
