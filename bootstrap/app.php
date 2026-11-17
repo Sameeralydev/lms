@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\AuthenticateIntegrationToken;
+use App\Http\Middleware\AssignRequestCorrelationId;
 use App\Http\Middleware\RequireAcademicFeature;
 use App\Http\Middleware\RequireAcademicScope;
 use App\Http\Middleware\RequireAdmissionsEnabled;
@@ -25,6 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [HandleInertiaRequests::class]);
+        $middleware->append(AssignRequestCorrelationId::class);
         $middleware->append(SecurityHeaders::class);
         $middleware->append(ValidateTrustedHost::class);
         $middleware->alias([

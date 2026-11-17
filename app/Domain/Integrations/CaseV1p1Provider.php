@@ -10,14 +10,21 @@ use Illuminate\Support\Str;
 /** Read-only CASE 1.1 views over the LMS's published competency framework records. */
 final class CaseV1p1Provider
 {
-    /** @return array{CFDocuments: list<array<string, mixed>>} */
-    public function documents(Tenant $tenant): array
+    /** @return array{items: list<array<string, mixed>>, total: int} */
+    public function documents(Tenant $tenant, int $limit = 100, int $offset = 0): array
     {
-        $frameworks = DB::table('academic_competency_frameworks')
-            ->where('tenant_id', $tenant->getKey())->where('status', 'published')->orderBy('id')->get();
+        $query = DB::table('academic_competency_frameworks')
+            ->where('tenant_id', $tenant->getKey())->where('status', 'published');
+        $total = (clone $query)->count();
+        $frameworks = $query->orderBy('id')->offset($offset)->limit($limit)->get([
+            'id', 'title', 'description', 'updated_at', 'version_number', 'status',
+        ]);
         $identifiers = $this->identifiers($tenant, 'academic_competency_framework', $frameworks->pluck('id')->map(fn ($id): int => (int) $id)->all());
 
-        return ['CFDocuments' => $frameworks->map(fn ($framework): array => $this->document($tenant, $framework, $identifiers[(int) $framework->id]))->all()];
+        return [
+            'items' => $frameworks->map(fn ($framework): array => $this->document($tenant, $framework, $identifiers[(int) $framework->id]))->all(),
+            'total' => $total,
+        ];
     }
 
     /** @return array<string, mixed> */

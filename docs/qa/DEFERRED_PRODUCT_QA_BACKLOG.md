@@ -32,3 +32,16 @@ Items in this file are **QA PENDING** unless evidence is explicitly recorded aft
 - **QA PENDING** - Verify persistent CASE sourcedId mappings under concurrent reads and ensure mappings do not leak between tenants.
 - **QA PENDING** - Confirm published-only filtering and exact CASE payload mapping against representative competency-framework records; verify unknown and malformed identifiers return protocol-appropriate errors.
 - **QA PENDING** - Review the missing Phase 22 acceptance matrix with the product owner before adding any further standards, SSO, provider adapters, import/sync, or webhook scope. No external credentials or provider environments were available or used.
+
+## Phase 23 - Security, Performance, Scalability and Hardening
+
+- **QA PENDING** - Run the full authentication/session and authorization matrix, including role escalation attempts, platform-versus-tenant boundaries, password recovery, session fixation, and campus-scoped access.
+- **QA PENDING** - Execute adversarial tenant-isolation tests across all module reads, writes, exports, integrations, queued jobs, document routes and tenant-specific caches; verify platform-wide operations remain explicitly authorized.
+- **QA PENDING** - Verify request correlation IDs are server-generated, unique per request, returned in `X-Request-Id`, and persisted in audit events; confirm caller-supplied IDs cannot be used to spoof audit correlation.
+- **QA PENDING** - Exercise integration API per-token and per-IP rate limits under valid, revoked, expired, malformed and distributed-source requests; verify throttling key cardinality remains bounded.
+- **QA PENDING** - Validate CASE 1.1 `CFDocuments` pagination (`limit`, `offset`, `X-Total-Count`, and `Link`) against official schema/conformance tooling and representative large tenant catalogs.
+- **QA PENDING** - Profile the CASE 1.1 list endpoint and other high-use dashboard/report queries with production-like data; record query counts, memory use, response sizes and p50/p95 before and after focused optimizations.
+- **QA PENDING** - Execute focused concurrency checks for token last-use updates, external identifier creation, file scan state changes, imports, and other idempotent/retryable jobs.
+- **QA PENDING** - Complete secure upload and authorization verification for each document workflow, including EICAR/ClamAV scanner behavior, quarantine transitions, stale signatures, unavailable scanner, and private download boundaries. Do not disable fail-closed behavior.
+- **QA PENDING** - Review CSP, secure cookies, trusted proxies/hosts, HTTPS/HSTS, secret management and deployment configuration in each real deployment environment; local configuration review is not a production security certification.
+- **QA PENDING** - Complete dependency vulnerability review, penetration testing, load/stress testing, complete PHPUnit/browser regression, accessibility certification, queue/cache outage testing, and disaster-recovery restore drills.

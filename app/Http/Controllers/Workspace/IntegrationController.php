@@ -64,8 +64,28 @@ class IntegrationController
     public function caseDocuments(Request $request, Tenant $tenant, CaseV1p1Provider $provider, AuditRecorder $audit): JsonResponse
     {
         $this->recordAccess($request, $tenant, 'case.documents.list', $audit);
+        $validated = $request->validate([
+            'limit' => ['sometimes', 'integer', 'min:1', 'max:500'],
+            'offset' => ['sometimes', 'integer', 'min:0', 'max:1000000'],
+        ]);
+        $limit = (int) ($validated['limit'] ?? 100);
+        $offset = (int) ($validated['offset'] ?? 0);
+        $page = $provider->documents($tenant, $limit, $offset);
+        $headers = ['X-Total-Count' => (string) $page['total']];
+        $base = url('/api/tenants/'.$tenant->slug.'/ims/case/v1p1/CFDocuments');
+        $links = [];
+        if ($offset > 0) {
+            $previousOffset = max(0, $offset - $limit);
+            $links[] = '<'.$base.'?'.http_build_query(['limit' => $limit, 'offset' => $previousOffset]).'>; rel="prev"';
+        }
+        if ($offset + $limit < $page['total']) {
+            $links[] = '<'.$base.'?'.http_build_query(['limit' => $limit, 'offset' => $offset + $limit]).'>; rel="next"';
+        }
+        if ($links !== []) {
+            $headers['Link'] = implode(', ', $links);
+        }
 
-        return response()->json($provider->documents($tenant))->header('Cache-Control', 'private, no-store');
+        return response()->json(['CFDocuments' => $page['items']])->withHeaders($headers)->header('Cache-Control', 'private, no-store');
     }
 
     public function caseDocument(Request $request, Tenant $tenant, string $sourcedId, CaseV1p1Provider $provider, AuditRecorder $audit): JsonResponse

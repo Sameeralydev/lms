@@ -37,7 +37,17 @@ class AuthenticateIntegrationToken
             return CaseStatus::failure(403, 'forbidden', 'The integration credential is not authorized for this operation.');
         }
 
-        $credential->forceFill(['last_used_at' => now()])->save();
+        // Credential authentication happens on every API request. Persist usage
+        // at most once per five minutes to avoid turning read traffic into a
+        // write hotspot while retaining useful last-use visibility.
+        if (! $credential->last_used_at || $credential->last_used_at->lte(now()->subMinutes(5))) {
+            $lastUsedCutoff = now()->subMinutes(5);
+            IntegrationApiCredential::query()
+                ->whereKey($credential->getKey())
+                ->where('tenant_id', $tenant->getKey())
+                ->where(fn ($query) => $query->whereNull('last_used_at')->orWhere('last_used_at', '<=', $lastUsedCutoff))
+                ->update(['last_used_at' => now(), 'updated_at' => now()]);
+        }
         $request->attributes->set('integration_credential', $credential);
         app(TenantContext::class)->enterProvisioning($tenant);
 
