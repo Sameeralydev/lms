@@ -26,6 +26,8 @@ final class PermissionCatalog
             'branding.update' => 'Update institution branding and theme.',
             'settings.update' => 'Update supported institution settings.',
             'audit.view' => 'View institution audit events.',
+            'integrations.view' => 'View configured standards and integration access for this institution.',
+            'integrations.manage' => 'Create and revoke institution-scoped integration credentials.',
             'hr.staff.view' => 'View staff directory and employment records within authorized institution and campus scope.',
             'hr.staff.view-own' => 'View the signed-in member’s own staff record.',
             'hr.staff.manage' => 'Create and update staff employment records within authorized scope.',

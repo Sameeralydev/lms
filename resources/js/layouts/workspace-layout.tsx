@@ -103,6 +103,7 @@ const tenantNavigation = [
     ['Family attendance', 'attendance/guardian', 'attendance.guardian.view'],
     ['Staff directory', 'hr/staff', 'hr.staff.view'],
     ['Library', 'library', 'library.view'],
+    ['Integrations', 'integrations', 'integrations.view'],
 ];
 
 export function WorkspaceLayout({ children, title, area }: WorkspaceLayoutProps) {

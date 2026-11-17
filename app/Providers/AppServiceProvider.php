@@ -92,5 +92,11 @@ class AppServiceProvider extends ServiceProvider
 
             return Limit::perMinute(10)->by($identity.'|'.$tenantKey);
         });
+        RateLimiter::for('integration-api', function (Request $request): Limit {
+            $tenant = $request->route('tenant');
+            $tenantKey = $tenant instanceof Tenant ? (string) $tenant->getKey() : (string) $tenant;
+
+            return Limit::perMinute(120)->by($tenantKey.'|'.$request->ip());
+        });
     }
 }

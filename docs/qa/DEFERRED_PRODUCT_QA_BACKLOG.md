@@ -22,3 +22,13 @@ Items in this file are **QA PENDING** unless evidence is explicitly recorded aft
 - **QA PENDING** — Reconcile any later approved Phase 21 pricing, quotas, billing, deployment-provisioning, or data-portability specification before implementing those unsupported commercial workflows.
 - **QA PENDING** — Verify domain TXT challenge, primary custom-domain routing, branding image delivery, display-name/logo rendering, and all six themes on the production host configuration.
 - **QA PENDING** - Run concurrent campus and staff creation/reactivation against configured limits on MySQL; confirm tenant row locking prevents over-allocation and historical records remain intact after plan changes.
+
+## Phase 22 - Standards and Integrations
+
+- **QA PENDING** - Apply the additive integration credential and external identifier migration only after independently verifying an authorized isolated Developer B schema, database server, port, schema name, and existing records.
+- **QA PENDING** - Verify authenticated CASE 1.1 provider responses against the official CASE 1.1 JSON schemas and conformance suite; the implemented subset is read-only CFDocuments, CFItems, and CFPackages for published competency frameworks and does not claim certification.
+- **QA PENDING** - Exercise token creation, one-time secret display, hashed-at-rest storage, expiry, scope denial, revocation, malformed bearer rejection, tenant binding, subscription entitlement enforcement, audit records, and route rate limiting through authenticated HTTP requests.
+- **QA PENDING** - Run cross-tenant and suspended-tenant adversarial API requests and prove no framework, competency, external identifier, or audit metadata crosses tenant boundaries.
+- **QA PENDING** - Verify persistent CASE sourcedId mappings under concurrent reads and ensure mappings do not leak between tenants.
+- **QA PENDING** - Confirm published-only filtering and exact CASE payload mapping against representative competency-framework records; verify unknown and malformed identifiers return protocol-appropriate errors.
+- **QA PENDING** - Review the missing Phase 22 acceptance matrix with the product owner before adding any further standards, SSO, provider adapters, import/sync, or webhook scope. No external credentials or provider environments were available or used.

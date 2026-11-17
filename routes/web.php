@@ -57,6 +57,7 @@ use App\Http\Controllers\Workspace\GradebookController;
 use App\Http\Controllers\Workspace\HrStaffController;
 use App\Http\Controllers\Workspace\LibraryController;
 use App\Http\Controllers\Workspace\InstitutionController;
+use App\Http\Controllers\Workspace\IntegrationController;
 use App\Http\Controllers\Workspace\MembershipController;
 use App\Http\Controllers\Workspace\OfficialAcademicRecordController;
 use App\Http\Controllers\Workspace\RoleController;
@@ -125,6 +126,9 @@ Route::middleware('auth')->group(function (): void {
     Route::prefix('t/{tenant:slug}')->name('tenant.')->middleware(['tenant.workspace', 'tenant.entitlement'])->group(function (): void {
         Route::get('/', fn (Tenant $tenant) => redirect()->route('tenant.dashboard', $tenant))->name('home');
         Route::get('/dashboard', WorkspaceDashboardController::class)->name('dashboard');
+        Route::get('/integrations', [IntegrationController::class, 'index'])->middleware('tenant.permission:integrations.view')->name('integrations.index');
+        Route::post('/integrations/credentials', [IntegrationController::class, 'store'])->middleware('tenant.permission:integrations.manage')->name('integrations.credentials.store');
+        Route::delete('/integrations/credentials/{credentialId}', [IntegrationController::class, 'revoke'])->middleware('tenant.permission:integrations.manage')->whereNumber('credentialId')->name('integrations.credentials.revoke');
         Route::prefix('hr/staff')->name('hr.staff.')->group(function (): void {
             Route::get('/', [HrStaffController::class, 'index'])->name('index');
             Route::get('/create', [HrStaffController::class, 'create'])->middleware('tenant.permission:hr.staff.manage')->name('create');

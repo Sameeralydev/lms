@@ -13,6 +13,7 @@ return [
         'hr' => 'Human resources',
         'library' => 'Library management',
         'white_label' => 'White-label branding and custom domains',
+        'integrations' => 'Standards integration API access',
     ],
     'limits' => [
         'campuses' => 'active campus',
@@ -39,5 +40,6 @@ return [
         'tenant.registration.' => 'academics',
         'tenant.sis.' => 'sis',
         'tenant.admissions' => 'admissions',
+        'tenant.integrations.' => 'integrations',
     ],
 ];
