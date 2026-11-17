@@ -99,6 +99,7 @@ const tenantNavigation = [
     ['My attendance', 'attendance/my', 'attendance.student.view'],
     ['Family attendance', 'attendance/guardian', 'attendance.guardian.view'],
     ['Staff directory', 'hr/staff', 'hr.staff.view'],
+    ['Library', 'library', 'library.view'],
 ];
 
 export function WorkspaceLayout({ children, title, area }: WorkspaceLayoutProps) {
@@ -155,7 +156,11 @@ export function WorkspaceLayout({ children, title, area }: WorkspaceLayoutProps)
                         ? currentTenant?.permissions.some((key) =>
                               ['academic.records.view-own', 'academic.records.guardian.view'].includes(key),
                           )
-                        : currentTenant?.permissions.includes(permission),
+                        : target === 'library'
+                          ? currentTenant?.permissions.some((key) =>
+                                ['library.view', 'library.member.view-own'].includes(key),
+                            )
+                          : currentTenant?.permissions.includes(permission),
               );
     const urlFor = (target: string) =>
         area === 'platform'

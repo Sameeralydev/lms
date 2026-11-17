@@ -1,18 +1,13 @@
 # Deferred product QA backlog
 
-All entries are **QA PENDING**. No unexecuted test is reported as passed.
+Items in this file are **QA PENDING** unless evidence is explicitly recorded after execution. Deferred items are reserved for final product-wide verification and do not represent passed checks.
 
-## Phase 19 HR
+## Phase 20 — Library Management
 
-- **QA PENDING** — Apply and verify the additive HR migration on an independently verified, authorized Developer B development database.
-- **QA PENDING** — Authenticated staff-directory and lifecycle browser journeys for HR manager, institution admin, campus admin, academic staff, and own-profile access.
-- **QA PENDING** — Cross-tenant, cross-campus and forged-membership/manager/department authorization cases.
-- **QA PENDING** — MySQL tenant composite foreign-key and employee-number uniqueness checks.
-- **QA PENDING** — Concurrent staff creation/status transition integrity and reporting-manager cycle checks.
-- **QA PENDING** — Six-theme, responsive and manual assistive-technology review for HR pages.
-- **QA PENDING** — Reconcile this staff master-record foundation against the approved Phase 19 contract when that specification is located. Add leave, recruitment, attendance, payroll, documents or performance only where that contract requires them.
-- **QA PENDING** — Confirm offboarding/account-access policy with the identity/operations contract; current employment status does not mutate tenant memberships or teaching assignments.
-
-## Product-wide
-
-- **QA PENDING** — Full PHPUnit, cross-module browser, concurrency, performance, security and accessibility suites are reserved for the final product-wide QA phase.
+- **QA PENDING** — Run the additive Phase 20 migration on a verified isolated MySQL schema after owner, server, schema, and existing-data checks. Do not use destructive refresh commands.
+- **QA PENDING** — Authenticated browser workflows for catalog search/edit/archive, copy registration and adjustments, membership activation/suspension, checkout, return, renewal, hold queue, hold expiry/cancellation, member self-service, and all six themes.
+- **QA PENDING** — MySQL concurrent checkout of one copy and concurrent checkouts against a single member loan limit; verify exactly one allowed transaction and consistent inventory.
+- **QA PENDING** — Cross-tenant and cross-campus authorization matrix for every library read and mutation, including forged IDs, inactive memberships, expired memberships, and member self-service.
+- **QA PENDING** — Complete accessibility review and screen-reader checks for the library workspace and mobile layouts.
+- **QA PENDING** — Product-wide regression and performance review of catalog queries and large circulation histories.
+- **QA PENDING** — Notifications, email/SMS/push delivery, digital resource licensing/security, and any institution-specific fine/acquisition workflow if approved for a later contract.
