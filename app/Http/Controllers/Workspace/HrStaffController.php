@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Workspace;
 
 use App\Domain\Hr\StaffLifecycle;
 use App\Domain\Tenancy\TenantContext;
+use App\Domain\Tenancy\TenantEntitlements;
 use App\Models\AcademicUnit;
 use App\Models\Campus;
 use App\Models\HrStaffRecord;
@@ -12,6 +13,7 @@ use App\Models\TenantMembership;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -96,7 +98,7 @@ final class HrStaffController
         ]);
     }
 
-    public function store(Request $request, Tenant $tenant): RedirectResponse
+    public function store(Request $request, Tenant $tenant, TenantEntitlements $entitlements): RedirectResponse
     {
         $membership = $this->context->membership();
         abort_unless($membership->hasPermission('hr.staff.manage'), 403);
@@ -117,11 +119,16 @@ final class HrStaffController
         $this->assertUnitScope($data['academic_unit_id'] ?? null, $campusId, $membership->institution_id);
         $manager = isset($data['manager_id']) ? HrStaffRecord::query()->whereKey($data['manager_id'])->firstOrFail() : null;
         $this->assertCampus($membership, $manager);
-        $record = $this->lifecycle->hire($request->user(), $staffMembership, [
-            ...$data,
-            'campus_id' => $campusId,
-            'institution_id' => $membership->institution_id,
-        ]);
+        $record = DB::transaction(function () use ($request, $tenant, $entitlements, $staffMembership, $data, $campusId, $membership): HrStaffRecord {
+            $lockedTenant = Tenant::query()->lockForUpdate()->findOrFail($tenant->getKey());
+            $entitlements->assertWithinLimit($lockedTenant, 'staff', HrStaffRecord::query()->where('status', 'active')->count());
+
+            return $this->lifecycle->hire($request->user(), $staffMembership, [
+                ...$data,
+                'campus_id' => $campusId,
+                'institution_id' => $membership->institution_id,
+            ]);
+        });
 
         return to_route('tenant.hr.staff.show', [$tenant, $record->getKey()])->with('status', 'Staff employment record created.');
     }
@@ -196,19 +203,25 @@ final class HrStaffController
         return back()->with('status', 'Staff record updated.');
     }
 
-    public function changeStatus(Request $request, Tenant $tenant, int $staffId): RedirectResponse
+    public function changeStatus(Request $request, Tenant $tenant, int $staffId, TenantEntitlements $entitlements): RedirectResponse
     {
         $membership = $this->context->membership();
         abort_unless($membership->hasPermission('hr.staff.status.manage'), 403);
-        $record = HrStaffRecord::query()->whereKey($staffId)->firstOrFail();
-        abort_if((int) $record->membership_id === (int) $membership->getKey(), 403, 'Staff members cannot change their own employment status.');
-        $this->assertCampus($membership, $record);
         $data = $request->validate([
             'status' => ['required', Rule::in(['active', 'inactive', 'suspended', 'separated'])],
             'effective_on' => ['required', 'date_format:Y-m-d', 'before_or_equal:today'],
             'reason' => ['nullable', 'string', 'max:500'],
         ]);
-        $this->lifecycle->changeStatus($request->user(), $record, $data['status'], $data['effective_on'], $data['reason'] ?? null);
+        DB::transaction(function () use ($request, $tenant, $staffId, $membership, $data, $entitlements): void {
+            $lockedTenant = Tenant::query()->lockForUpdate()->findOrFail($tenant->getKey());
+            $record = HrStaffRecord::query()->whereKey($staffId)->lockForUpdate()->firstOrFail();
+            abort_if((int) $record->membership_id === (int) $membership->getKey(), 403, 'Staff members cannot change their own employment status.');
+            $this->assertCampus($membership, $record);
+            if ($data['status'] === 'active' && $record->status !== 'active') {
+                $entitlements->assertWithinLimit($lockedTenant, 'staff', HrStaffRecord::query()->where('status', 'active')->count());
+            }
+            $this->lifecycle->changeStatus($request->user(), $record, $data['status'], $data['effective_on'], $data['reason'] ?? null);
+        });
 
         return back()->with('status', 'Employment status updated and recorded in staff history.');
     }

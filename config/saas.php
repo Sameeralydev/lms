@@ -14,6 +14,10 @@ return [
         'library' => 'Library management',
         'white_label' => 'White-label branding and custom domains',
     ],
+    'limits' => [
+        'campuses' => 'active campus',
+        'staff' => 'active staff record',
+    ],
     // Route names are mapped centrally so every read and write in a module receives the same gate.
     'route_features' => [
         'public.admissions.' => 'admissions',

@@ -3,6 +3,7 @@
 namespace App\Domain\Tenancy;
 
 use App\Models\Tenant;
+use Illuminate\Validation\ValidationException;
 
 final class TenantEntitlements
 {
@@ -30,6 +31,18 @@ final class TenantEntitlements
         $value = $subscription?->status === 'active' ? ($subscription->plan?->limits[$key] ?? null) : null;
 
         return is_int($value) && $value >= 0 ? $value : null;
+    }
+
+    public function assertWithinLimit(Tenant $tenant, string $key, int $currentCount, int $requested = 1): void
+    {
+        $limit = $this->limit($tenant, $key);
+        if ($limit === null || $currentCount + $requested <= $limit) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'plan' => 'The tenant has reached its configured '.(config('saas.limits.'.$key) ?? $key).' limit.',
+        ]);
     }
 
     private function subscription(Tenant $tenant): ?\App\Models\TenantSubscription

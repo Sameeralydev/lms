@@ -19,6 +19,7 @@ class PlanController extends Controller
         return Inertia::render('platform/plans/index', [
             'plans' => TenantPlan::query()->withCount('subscriptions')->orderBy('name')->get(),
             'features' => config('saas.features'),
+            'limits' => config('saas.limits'),
         ]);
     }
 
@@ -79,8 +80,8 @@ class PlanController extends Controller
             }
         }
         foreach (array_keys($validated['limits'] ?? []) as $limit) {
-            if (! preg_match('/^[a-z][a-z0-9_.-]{1,79}$/', (string) $limit)) {
-                abort(422, 'Limit keys must use lowercase letters, numbers, dots, underscores, or hyphens.');
+            if (! array_key_exists($limit, config('saas.limits', []))) {
+                abort(422, 'A plan contains an unsupported limit key.');
             }
         }
 

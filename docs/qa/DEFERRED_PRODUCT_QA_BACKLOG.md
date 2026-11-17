@@ -21,3 +21,4 @@ Items in this file are **QA PENDING** unless evidence is explicitly recorded aft
 - **QA PENDING** — Complete the cross-tenant/campus adversarial matrix for all mapped module routes and confirm no route alias or custom-domain path bypasses entitlement checks.
 - **QA PENDING** — Reconcile any later approved Phase 21 pricing, quotas, billing, deployment-provisioning, or data-portability specification before implementing those unsupported commercial workflows.
 - **QA PENDING** — Verify domain TXT challenge, primary custom-domain routing, branding image delivery, display-name/logo rendering, and all six themes on the production host configuration.
+- **QA PENDING** - Run concurrent campus and staff creation/reactivation against configured limits on MySQL; confirm tenant row locking prevents over-allocation and historical records remain intact after plan changes.

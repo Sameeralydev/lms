@@ -25,7 +25,15 @@ type FormData = {
     is_active: boolean;
 };
 
-export default function PlansIndex({ plans, features }: { plans: Plan[]; features: Record<string, string> }) {
+export default function PlansIndex({
+    plans,
+    features,
+    limits,
+}: {
+    plans: Plan[];
+    features: Record<string, string>;
+    limits: Record<string, string>;
+}) {
     const [selected, setSelected] = useState<number | null>(null);
     const [limitsText, setLimitsText] = useState('{}');
     const form = useForm<FormData>({
@@ -122,8 +130,8 @@ export default function PlansIndex({ plans, features }: { plans: Plan[]; feature
                     <div>
                         <h2 className="font-semibold">{selected ? 'Edit plan' : 'Create plan'}</h2>
                         <p className="text-text-secondary mt-1 text-sm">
-                            Entitlements control module access for assigned tenants. Limits are stored as
-                            configuration for modules to enforce at their own data boundaries.
+                            Entitlements control module access for assigned tenants. Supported limits are
+                            enforced on campus and staff creation and activation.
                         </p>
                     </div>
                     <FormErrors />
@@ -184,7 +192,11 @@ export default function PlansIndex({ plans, features }: { plans: Plan[]; feature
                             aria-describedby="limits-help"
                         />
                         <span id="limits-help" className="text-text-secondary font-normal">
-                            Example: {'{ "campuses": 3 }'}. No limit values are prefilled.
+                            Configure supported limits only:{' '}
+                            {Object.entries(limits)
+                                .map(([key, label]) => `${key} (${label})`)
+                                .join(', ')}
+                            . Leave as {'{}'} for no configured limits.
                         </span>
                         {form.errors.limits ? (
                             <span className="text-danger" role="alert">
