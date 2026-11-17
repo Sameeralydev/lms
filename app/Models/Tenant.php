@@ -54,4 +54,9 @@ class Tenant extends Model
     {
         return $this->hasMany(TenantSetting::class);
     }
+
+    public function subscription(): HasOne
+    {
+        return $this->hasOne(TenantSubscription::class);
+    }
 }

@@ -6,6 +6,7 @@ use App\Domain\Appearance\BrandColor;
 use App\Domain\Appearance\ThemeRegistry;
 use App\Domain\Audit\AuditRecorder;
 use App\Domain\Tenancy\TenantContext;
+use App\Domain\Tenancy\TenantEntitlements;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant;
 use App\Models\TenantBranding;
@@ -75,9 +76,10 @@ class BrandingController extends Controller
         return back()->with('status', 'Branding saved.');
     }
 
-    public function image(Tenant $tenant, string $kind): SymfonyResponse
+    public function image(Tenant $tenant, string $kind, TenantEntitlements $entitlements): SymfonyResponse
     {
         abort_unless($tenant->status === 'active' && in_array($kind, ['logo', 'favicon'], true), 404);
+        abort_unless($entitlements->allows($tenant, 'white_label'), 404);
         $branding = TenantBranding::query()->withoutGlobalScope('tenant')->where('tenant_id', $tenant->getKey())->firstOrFail();
         $path = $branding->{$kind === 'logo' ? 'logo_path' : 'favicon_path'};
         abort_unless(is_string($path) && str_starts_with($path, 'branding/'.$tenant->public_id.'/') && Storage::disk('local')->exists($path), 404);

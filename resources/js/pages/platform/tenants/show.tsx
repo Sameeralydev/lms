@@ -22,11 +22,16 @@ type Institution = {
     locale: string;
 };
 type Event = { id: number; event_type: string; occurred_at: string; actor?: { name: string } | null };
+type PlanOption = { id: number; name: string; key: string };
 export default function TenantShow({
     tenant,
     institution,
     recentEvents,
     ownerInvitation,
+    subscription,
+    subscriptionEvents,
+    availablePlans,
+    canManageSubscription,
 }: {
     tenant: {
         id: number;
@@ -40,8 +45,31 @@ export default function TenantShow({
     institution: Institution;
     recentEvents: Event[];
     ownerInvitation: { email: string; status: string; expires_at: string; accepted_at: string | null } | null;
+    subscription: null | {
+        status: string;
+        startedAt: string;
+        plan: {
+            id: number;
+            name: string;
+            key: string;
+            entitlements: Record<string, boolean>;
+            limits: Record<string, number>;
+        } | null;
+    };
+    subscriptionEvents: {
+        id: number;
+        event_type: string;
+        details: Record<string, unknown>;
+        occurred_at: string;
+    }[];
+    availablePlans: PlanOption[];
+    canManageSubscription: boolean;
 }) {
     const form = useForm({ ...institution });
+    const planForm = useForm({
+        plan_id: subscription?.plan?.id ? String(subscription.plan.id) : '',
+        status: subscription?.status ?? 'active',
+    });
     const field = (name: keyof Institution, label: string, type = 'text') => (
         <TextField
             label={label}
@@ -136,6 +164,86 @@ export default function TenantShow({
                     </Button>
                 </form>
                 <section className="grid content-start gap-6">
+                    <div className="border-border bg-surface rounded-2xl border p-5">
+                        <h2 className="font-semibold">Plan and entitlements</h2>
+                        {subscription?.plan ? (
+                            <div className="mt-2 text-sm">
+                                <p className="font-medium">
+                                    {subscription.plan.name}{' '}
+                                    <span className="text-text-muted text-xs">({subscription.plan.key})</span>
+                                </p>
+                                <p className="text-text-secondary mt-1 capitalize">
+                                    Assignment {subscription.status} · since{' '}
+                                    {new Date(subscription.startedAt).toLocaleDateString()}
+                                </p>
+                                <p className="text-text-secondary mt-2">
+                                    {Object.values(subscription.plan.entitlements).filter(Boolean).length}{' '}
+                                    enabled features
+                                </p>
+                            </div>
+                        ) : (
+                            <p className="text-text-secondary mt-2 text-sm">
+                                Legacy access: no plan is assigned, so current access remains unchanged.
+                            </p>
+                        )}
+                        {canManageSubscription ? (
+                            <form
+                                className="mt-4 grid gap-3"
+                                onSubmit={(event) => {
+                                    event.preventDefault();
+                                    planForm.put(`/platform/tenants/${tenant.slug}/subscription`, {
+                                        onSuccess: () => planForm.reset('status'),
+                                    });
+                                }}
+                            >
+                                <FormErrors />
+                                <SelectField
+                                    label="Plan"
+                                    name="plan_id"
+                                    options={availablePlans.map((plan) => ({
+                                        value: String(plan.id),
+                                        label: plan.name,
+                                    }))}
+                                    value={planForm.data.plan_id}
+                                    onChange={(event) =>
+                                        planForm.setData('plan_id', event.currentTarget.value)
+                                    }
+                                    error={planForm.errors.plan_id}
+                                />
+                                <SelectField
+                                    label="Assignment status"
+                                    name="status"
+                                    options={[
+                                        { value: 'active', label: 'Active' },
+                                        { value: 'paused', label: 'Paused' },
+                                    ]}
+                                    value={planForm.data.status}
+                                    onChange={(event) =>
+                                        planForm.setData('status', event.currentTarget.value)
+                                    }
+                                    error={planForm.errors.status}
+                                />
+                                <Button type="submit" loading={planForm.processing}>
+                                    Save assignment
+                                </Button>
+                            </form>
+                        ) : null}
+                        {subscriptionEvents.length ? (
+                            <div className="border-border mt-4 border-t pt-3">
+                                <h3 className="text-sm font-medium">Assignment history</h3>
+                                <ul className="mt-2 grid gap-2">
+                                    {subscriptionEvents.map((event) => (
+                                        <li key={event.id} className="text-text-secondary text-xs">
+                                            <span className="capitalize">
+                                                {event.event_type.replaceAll('_', ' ')}
+                                            </span>{' '}
+                                            · {new Date(event.occurred_at).toLocaleString()}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        ) : null}
+                    </div>
                     <div className="border-border bg-surface rounded-2xl border p-5">
                         <h2 className="font-semibold">Tenant lifecycle</h2>
                         <p className="text-text-secondary mt-1 text-sm">

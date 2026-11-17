@@ -24,6 +24,7 @@ type SharedProps = {
         primaryColor: string;
         accentColor: string;
         logoUrl: string | null;
+        faviconUrl: string | null;
     };
     academicConfig: AcademicWorkspaceConfig | null;
     workspaces: { slug: string; name: string; status: string }[];
@@ -43,6 +44,8 @@ const themeOptions = [
 const platformNavigation = [
     ['Overview', '/platform/dashboard', 'platform.dashboard.view'],
     ['Institutions', '/platform/tenants', 'platform.tenants.view'],
+    ['Plans & entitlements', '/platform/plans', 'platform.plans.manage'],
+    ['Tenant plans', '/platform/subscriptions', 'platform.subscriptions.manage'],
     ['Operators', '/platform/operators', 'platform.operators.manage'],
     ['Audit history', '/platform/audit', 'platform.audit.view'],
     ['Operations', '/platform/settings', 'platform.dashboard.view'],
@@ -179,6 +182,11 @@ export function WorkspaceLayout({ children, title, area }: WorkspaceLayoutProps)
             <Head
                 title={`${title} · ${area === 'platform' ? 'Platform' : (currentTenant?.name ?? 'Institution')}`}
             />
+            {branding?.faviconUrl && area === 'tenant' ? (
+                <Head>
+                    <link rel="icon" href={branding.faviconUrl} />
+                </Head>
+            ) : null}
             <a className="skip-link" href="#main-content">
                 Skip to content
             </a>

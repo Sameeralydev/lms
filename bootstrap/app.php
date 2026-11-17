@@ -6,6 +6,7 @@ use App\Http\Middleware\RequireAcademicScope;
 use App\Http\Middleware\RequireAdmissionsEnabled;
 use App\Http\Middleware\RequirePlatformPermission;
 use App\Http\Middleware\RequireTenantPermission;
+use App\Http\Middleware\RequireTenantEntitlement;
 use App\Http\Middleware\ResolveAdmissionsTenant;
 use App\Http\Middleware\ResolveTenantWorkspace;
 use App\Http\Middleware\SecurityHeaders;
@@ -27,6 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'platform.permission' => RequirePlatformPermission::class,
             'tenant.permission' => RequireTenantPermission::class,
+            'tenant.entitlement' => RequireTenantEntitlement::class,
             'tenant.academic.scope' => RequireAcademicScope::class,
             'tenant.academic.feature' => RequireAcademicFeature::class,
             'tenant.admissions.enabled' => RequireAdmissionsEnabled::class,

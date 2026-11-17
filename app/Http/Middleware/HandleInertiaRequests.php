@@ -5,8 +5,11 @@ namespace App\Http\Middleware;
 use App\Domain\Academic\AcademicDefaults;
 use App\Domain\Appearance\ThemeRegistry;
 use App\Domain\Tenancy\TenantContext;
+use App\Domain\Tenancy\TenantEntitlements;
 use App\Models\AcademicConfiguration;
 use App\Models\TenantMembership;
+use App\Models\TenantDomain;
+use App\Models\Tenant;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -24,7 +27,7 @@ class HandleInertiaRequests extends Middleware
             // these props lazily so they observe only verified request context.
             'auth' => fn (): array => $this->authProps($request, $tenantContext),
             'theme' => fn (): string => $this->theme($request, $tenantContext),
-            'branding' => fn (): ?array => $this->branding($tenantContext),
+            'branding' => fn (): ?array => $this->branding($request, $tenantContext),
             'academicConfig' => fn (): ?array => $this->academicConfig($tenantContext),
             'workspaces' => fn (): array => $this->workspaces($request),
             'flash' => [
@@ -62,8 +65,9 @@ class HandleInertiaRequests extends Middleware
     private function theme(Request $request, TenantContext $tenantContext): string
     {
         $theme = 'executive-navy';
-        if ($tenantContext->hasMembership()) {
-            $tenantTheme = $tenantContext->tenant()->branding()->value('theme');
+        $tenant = $this->brandingTenant($request, $tenantContext);
+        if ($tenant && app(TenantEntitlements::class)->allows($tenant, 'white_label')) {
+            $tenantTheme = $tenant->branding()->value('theme');
             if (is_string($tenantTheme)) {
                 $theme = $tenantTheme;
             }
@@ -78,13 +82,13 @@ class HandleInertiaRequests extends Middleware
     }
 
     /** @return array<string, string|null>|null */
-    private function branding(TenantContext $tenantContext): ?array
+    private function branding(Request $request, TenantContext $tenantContext): ?array
     {
-        if (! $tenantContext->hasMembership()) {
+        $tenant = $this->brandingTenant($request, $tenantContext);
+        if (! $tenant || ! app(TenantEntitlements::class)->allows($tenant, 'white_label')) {
             return null;
         }
 
-        $tenant = $tenantContext->tenant();
         $branding = $tenant->branding()->first();
 
         if (! $branding) {
@@ -96,7 +100,19 @@ class HandleInertiaRequests extends Middleware
             'primaryColor' => $branding->primary_color,
             'accentColor' => $branding->accent_color,
             'logoUrl' => $branding->logo_path ? route('tenant.assets.image', ['tenant' => $tenant->slug, 'kind' => 'logo']) : null,
+            'faviconUrl' => $branding->favicon_path ? route('tenant.assets.image', ['tenant' => $tenant->slug, 'kind' => 'favicon']) : null,
         ];
+    }
+
+    private function brandingTenant(Request $request, TenantContext $tenantContext): ?Tenant
+    {
+        if ($tenantContext->hasMembership()) {
+            return $tenantContext->tenant();
+        }
+
+        $domain = $request->attributes->get('verifiedTenantDomain');
+
+        return $domain instanceof TenantDomain && $domain->tenant?->status === 'active' ? $domain->tenant : null;
     }
 
     /** @return array{operatingModel:string, enabledFeatures:array<string,bool>, terminology:array<string,string>}|null */

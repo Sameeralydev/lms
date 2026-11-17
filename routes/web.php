@@ -10,7 +10,9 @@ use App\Http\Controllers\HomeController;
 use App\Http\Controllers\Platform\AuditController as PlatformAuditController;
 use App\Http\Controllers\Platform\DashboardController as PlatformDashboardController;
 use App\Http\Controllers\Platform\OperatorController;
+use App\Http\Controllers\Platform\PlanController;
 use App\Http\Controllers\Platform\SettingsController as PlatformSettingsController;
+use App\Http\Controllers\Platform\SubscriptionController;
 use App\Http\Controllers\Platform\TenantController as PlatformTenantController;
 use App\Http\Controllers\Workspace\AcademicAuditController;
 use App\Http\Controllers\Workspace\AcademicCalendarController;
@@ -103,6 +105,11 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/audit', [PlatformAuditController::class, 'index'])->middleware('platform.permission:platform.audit.view')->name('audit.index');
         Route::get('/operators', [OperatorController::class, 'index'])->middleware('platform.permission:platform.operators.manage')->name('operators.index');
         Route::post('/operators', [OperatorController::class, 'store'])->middleware('platform.permission:platform.operators.manage')->name('operators.store');
+        Route::get('/plans', [PlanController::class, 'index'])->middleware('platform.permission:platform.plans.manage')->name('plans.index');
+        Route::post('/plans', [PlanController::class, 'store'])->middleware('platform.permission:platform.plans.manage')->name('plans.store');
+        Route::put('/plans/{plan}', [PlanController::class, 'update'])->middleware('platform.permission:platform.plans.manage')->name('plans.update');
+        Route::get('/subscriptions', [SubscriptionController::class, 'index'])->middleware('platform.permission:platform.subscriptions.manage')->name('subscriptions.index');
+        Route::put('/tenants/{tenant:slug}/subscription', [SubscriptionController::class, 'assign'])->middleware('platform.permission:platform.subscriptions.manage')->name('subscriptions.assign');
         Route::prefix('tenants')->middleware('platform.permission:platform.tenants.view')->name('tenants.')->group(function (): void {
             Route::get('/', [PlatformTenantController::class, 'index'])->name('index');
             Route::get('/create', [PlatformTenantController::class, 'create'])->middleware('platform.permission:platform.tenants.create')->name('create');
@@ -115,7 +122,7 @@ Route::middleware('auth')->group(function (): void {
 
     Route::post('/workspace/theme', [ThemeController::class, 'update'])->name('workspace.theme.update');
 
-    Route::prefix('t/{tenant:slug}')->name('tenant.')->middleware('tenant.workspace')->group(function (): void {
+    Route::prefix('t/{tenant:slug}')->name('tenant.')->middleware(['tenant.workspace', 'tenant.entitlement'])->group(function (): void {
         Route::get('/', fn (Tenant $tenant) => redirect()->route('tenant.dashboard', $tenant))->name('home');
         Route::get('/dashboard', WorkspaceDashboardController::class)->name('dashboard');
         Route::prefix('hr/staff')->name('hr.staff.')->group(function (): void {
@@ -644,7 +651,7 @@ Route::middleware('auth')->group(function (): void {
 
 Route::get('/tenant-assets/{tenant:slug}/{kind}', [BrandingController::class, 'image'])->name('tenant.assets.image');
 
-Route::prefix('admissions/{tenant:slug}')->name('public.admissions.')->middleware('admissions.tenant')->group(function (): void {
+Route::prefix('admissions/{tenant:slug}')->name('public.admissions.')->middleware(['admissions.tenant', 'tenant.entitlement'])->group(function (): void {
     Route::get('/', [PublicAdmissionsController::class, 'index'])->middleware('admissions.enabled')->name('index');
     Route::get('/intakes/{intakeCode}', [PublicAdmissionsController::class, 'showIntake'])->middleware('admissions.enabled:public')->name('intakes.show');
     Route::post('/inquiries', [PublicAdmissionsController::class, 'inquiry'])->middleware(['admissions.enabled:inquiries', 'throttle:public'])->name('inquiries.store');
@@ -664,7 +671,7 @@ Route::prefix('admissions/{tenant:slug}')->name('public.admissions.')->middlewar
     Route::post('/offers/{offerId}/response', [ApplicantAdmissionsController::class, 'respondToOffer'])->middleware(['auth', 'verified', 'throttle:applicant.application'])->name('offers.respond');
 });
 
-Route::prefix('t/{tenant:slug}/admissions')->name('tenant.admissions.')->middleware(['auth', 'tenant.workspace'])->group(function (): void {
+Route::prefix('t/{tenant:slug}/admissions')->name('tenant.admissions.')->middleware(['auth', 'tenant.workspace', 'tenant.entitlement'])->group(function (): void {
     Route::get('/', [AdmissionsController::class, 'index'])->middleware('tenant.permission:admissions.view')->name('index');
     Route::put('/settings', [AdmissionsController::class, 'updateSettings'])->middleware('tenant.permission:admissions.settings.manage')->name('settings.update');
 

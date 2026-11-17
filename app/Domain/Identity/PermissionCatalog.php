@@ -224,6 +224,8 @@ final class PermissionCatalog
             'platform.tenants.create' => 'Provision a new institution tenant.',
             'platform.tenants.update' => 'Update institution and tenant profile.',
             'platform.tenants.status' => 'Activate or suspend a tenant.',
+            'platform.plans.manage' => 'Create and manage tenant feature plans.',
+            'platform.subscriptions.manage' => 'Assign and manage tenant plan access.',
             'platform.operators.manage' => 'Assign non-superadmin platform operator roles.',
             'platform.audit.view' => 'View platform audit history.',
         ];
@@ -244,7 +246,7 @@ final class PermissionCatalog
     public static function ensurePlatformRoles(): void
     {
         self::ensure();
-        self::createPlatformRole('platform.operations_admin', 'Platform Operations Administrator', 'Operate tenant provisioning and status workflows.', ['platform.dashboard.view', 'platform.tenants.view', 'platform.tenants.create', 'platform.tenants.update', 'platform.tenants.status', 'platform.audit.view']);
+        self::createPlatformRole('platform.operations_admin', 'Platform Operations Administrator', 'Operate tenant provisioning and status workflows.', ['platform.dashboard.view', 'platform.tenants.view', 'platform.tenants.create', 'platform.tenants.update', 'platform.tenants.status', 'platform.plans.manage', 'platform.subscriptions.manage', 'platform.audit.view']);
         self::createPlatformRole('platform.support_operator', 'Platform Support Operator', 'Read platform and tenant operational records.', ['platform.dashboard.view', 'platform.tenants.view', 'platform.audit.view']);
     }
 
