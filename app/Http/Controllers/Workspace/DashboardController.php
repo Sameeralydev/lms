@@ -88,6 +88,11 @@ class DashboardController extends Controller
         $addCard('attendance.view', 'Attendance operations', 'attendance', 'Registers, corrections, reports, and authorized review.');
         $addCard('attendance.student.view', 'My attendance', 'attendance/my', 'Your own attendance record and justifications.');
         $addCard('attendance.guardian.view', 'Family attendance', 'attendance/guardian', 'Attendance for verified learners linked to your account.');
+        if ($can('hr.staff.view')) {
+            $cards[] = ['label' => 'Staff management', 'href' => '/t/'.$tenant->slug.'/hr/staff', 'detail' => 'Employment records within your institution and campus scope.'];
+        } elseif ($can('hr.staff.view-own')) {
+            $cards[] = ['label' => 'My staff profile', 'href' => '/t/'.$tenant->slug.'/hr/staff', 'detail' => 'View your own employment record.'];
+        }
         $addCard('audit.view', 'Audit history', 'audit', 'Administrative events available to your role.');
 
         $metrics = [];

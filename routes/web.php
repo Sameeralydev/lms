@@ -52,6 +52,7 @@ use App\Http\Controllers\Workspace\ExaminationResultsController;
 use App\Http\Controllers\Workspace\ExaminationSeatingController;
 use App\Http\Controllers\Workspace\ExaminationStaffController;
 use App\Http\Controllers\Workspace\GradebookController;
+use App\Http\Controllers\Workspace\HrStaffController;
 use App\Http\Controllers\Workspace\InstitutionController;
 use App\Http\Controllers\Workspace\MembershipController;
 use App\Http\Controllers\Workspace\OfficialAcademicRecordController;
@@ -116,6 +117,14 @@ Route::middleware('auth')->group(function (): void {
     Route::prefix('t/{tenant:slug}')->name('tenant.')->middleware('tenant.workspace')->group(function (): void {
         Route::get('/', fn (Tenant $tenant) => redirect()->route('tenant.dashboard', $tenant))->name('home');
         Route::get('/dashboard', WorkspaceDashboardController::class)->name('dashboard');
+        Route::prefix('hr/staff')->name('hr.staff.')->group(function (): void {
+            Route::get('/', [HrStaffController::class, 'index'])->name('index');
+            Route::get('/create', [HrStaffController::class, 'create'])->middleware('tenant.permission:hr.staff.manage')->name('create');
+            Route::post('/', [HrStaffController::class, 'store'])->middleware('tenant.permission:hr.staff.manage')->name('store');
+            Route::get('/{staffId}', [HrStaffController::class, 'show'])->whereNumber('staffId')->name('show');
+            Route::put('/{staffId}', [HrStaffController::class, 'update'])->middleware('tenant.permission:hr.staff.manage')->whereNumber('staffId')->name('update');
+            Route::patch('/{staffId}/status', [HrStaffController::class, 'changeStatus'])->middleware('tenant.permission:hr.staff.status.manage')->whereNumber('staffId')->name('status');
+        });
         Route::get('/institution', [InstitutionController::class, 'show'])->middleware('tenant.permission:tenant.view')->name('institution.show');
         Route::put('/institution', [InstitutionController::class, 'update'])->middleware('tenant.permission:institution.update')->name('institution.update');
         Route::get('/campuses', [CampusController::class, 'index'])->middleware('tenant.permission:campus.view')->name('campuses.index');
