@@ -18,12 +18,18 @@ The original cumulative branch is retained, including the staff lifecycle, libra
 
 ## Phase 22 supported boundary
 
-The repository's approved standards map names CASE 1.1 and says CASE exchange endpoints are missing. The integrated branch retains the tenant-bound, read-only CASE provider for published `CFDocuments`, `CFItems`, and `CFPackages`, plus Phase 23 collection pagination. The available contract does not define CASE import/consumer writes, associations, or additional resource mappings; those remain implementation gaps pending an approved exchange contract. No other standard or formal conformance is claimed.
+The repository's approved standards map names CASE 1.1 and records that CASE exchange support was missing. The integrated branch provides a tenant-bound, read-only subset for published `CFDocuments`, `CFItems`, and `CFPackages`, plus Phase 23 collection pagination. The available contract does not define CASE import/consumer writes, associations, or additional resource mappings; those remain scope dependencies pending an approved exchange contract. No other standard or formal conformance is claimed.
+
+## Functional scope reconciliation
+
+The detailed traceability and source references are in `REQUIREMENTS_COVERAGE.md`. That matrix distinguishes implemented workflows from QA-only verification and from functional scope dependencies. The available briefs do not provide formal requirement IDs or standalone acceptance matrices. Conditional payroll, billing, external message delivery, fines, digital-library, and other standards examples are not treated as approved until their business/provider contracts are defined. The Phase 22 CASE API is an implemented read-only subset, not complete CASE provider conformance; CASE import/consumer behavior remains a product-scope dependency because the repository does not define its source, mapping, persistence, conflict, or publication rules.
+
+The application-side Phase 16 communication workflows are implemented, including announcements, scheduled publication, direct messages and in-app notifications. User delivery preferences and external channels remain unimplemented pending an approved consent/provider contract.
 
 ## Database and verification
 
 Additive migrations cover announcements, conversation/message/inbox tables, HR, library, SaaS subscriptions, and CASE integration. No migration or database-changing command has been run; local database identity and authorization were not independently verified.
 
-Focused development checks are recorded in the delivery report. Product-wide adversarial tenant checks, authenticated browser workflows, concurrency and scheduler verification, CASE schema conformance, external delivery, and comprehensive security/accessibility/performance tests remain **QA PENDING** in `docs/qa/DEFERRED_PRODUCT_QA_BACKLOG.md`.
+The integrated worktree now has a local dependency copy, and Composer's optimized autoloader was generated from the committed `composer.json` without scripts. `composer validate`, actual `artisan route:list` for communications, library, HR, integrations and CASE, PHP syntax checks, TypeScript, focused ESLint, and the production build passed. No temporary PSR-4 runtime override was used. Product-wide adversarial tenant checks, authenticated browser workflows, concurrency and scheduler verification, CASE schema conformance, and comprehensive security/accessibility/performance tests remain **QA PENDING** in `docs/qa/DEFERRED_PRODUCT_QA_BACKLOG.md`.
 
-**Consolidation is complete. Development completion remains conditional on an approved Phase 22 import contract and authoritative Phase 16 delivery requirements; do not treat this handoff as a claim that those unsupported boundaries are implemented.**
+**The integrated code is preserved. Functional scope dependencies are listed in the coverage matrix; all remaining verification is separately marked QA PENDING. Do not interpret this handoff as CASE conformance certification or external-provider delivery verification.**
