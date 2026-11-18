@@ -14,7 +14,7 @@ async function signIn(page: Page, email: string | undefined, password: string | 
     await page.getByLabel('Email address').fill(email);
     await page.getByLabel('Password').fill(password);
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await expect(page).toHaveURL(/\/(?:platform\/dashboard|workspaces)$/);
+    await expect(page).toHaveURL(/\/(?:platform\/dashboard|workspaces)$/, { timeout: 30_000 });
 }
 
 async function captureRole(

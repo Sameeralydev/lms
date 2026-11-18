@@ -55,3 +55,9 @@ Latest functional completion evidence (2026-11-10): see PHASE_14_FINAL_FUNCTIONA
 ## Fresh closure evidence ? 2026-11-10
 
 See [PHASE_14_FINAL_CLOSURE_ADDENDUM_2026-11-10.md](PHASE_14_FINAL_CLOSURE_ADDENDUM_2026-11-10.md) for this pass's detailed evidence. Key disposition: focused guardian published-grade workflow passed (9 tests / 447 assertions); focused guardian browser test passed after asset rebuild; TypeScript, ESLint, Prettier, Vitest (24), Composer audit, production npm audit, and Vite production build passed. The earlier full Chromium run remains 42 passed / 2 failed and was not rerun as a complete suite. Phase 14 MySQL preflight exited 2 because private `.env.phase14.testing` is absent; MySQL tests and all eight concurrency probes were not run. Phase 14 remains BLOCKED; no Phase 15 work started.
+
+## Current dependency/security disposition — 2026-11-11
+
+Fresh `composer audit` reported no vulnerabilities. `npm.cmd audit --omit=dev` reported zero vulnerabilities. Full `npm.cmd audit` reported 10 moderate advisories in the ESLint/TypeScript-ESLint development dependency chain; npm offered an automated path requiring a breaking ESLint 9.39.5 upgrade. No forced or incompatible upgrade was applied, and no owner risk was accepted. `OWNER_NPM_RISK=PENDING`.
+
+Guarded Phase 14 MySQL ran only against its dedicated owned test schema and retained its ownership fingerprint. Eight concurrent production-workflow probes passed. The full scanner-enabled browser suite passed after the local ClamAV signature database was refreshed; scanner fail-closed behavior was not disabled. These checks are engineering evidence, not a certification. See [full current evidence](PHASE_14_FINAL_FUNCTIONAL_CLOSURE_2026-11-11.md).

@@ -3,10 +3,12 @@
 namespace App\Jobs;
 
 use App\Domain\Admissions\Documents\AdmissionDocumentScanner;
+use App\Domain\Admissions\Documents\AdmissionDocumentScanning;
 use App\Domain\Audit\AuditRecorder;
 use App\Domain\Tenancy\TenantContext;
 use App\Models\ExamAppealEvidence;
 use App\Models\Tenant;
+use App\Support\PrivateFileFingerprint;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -37,14 +39,20 @@ final class ScanExamAppealEvidence implements ShouldQueue
 
                 return;
             }
-            $hash = hash_file('sha256', Storage::disk('local')->path($evidence->private_path));
-            if (! is_string($hash) || ! hash_equals($evidence->sha256, $hash)) {
+            $absolutePath = Storage::disk('local')->path($evidence->private_path);
+            $hash = PrivateFileFingerprint::sha256($absolutePath);
+            if ($hash === null) {
+                $this->complete('unavailable', 'file_unavailable', $scanner->name(), $audit);
+
+                return;
+            }
+            if (! hash_equals($evidence->sha256, $hash)) {
                 $this->complete('rejected', 'content_hash_mismatch', $scanner->name(), $audit);
 
                 return;
             }
             ExamAppealEvidence::query()->where('tenant_id', $this->tenantId)->whereKey($this->evidenceId)->where('scan_status', 'quarantined')->update(['scan_status' => 'scanning', 'scanner' => $scanner->name(), 'updated_at' => now()]);
-            $result = $scanner->scan(Storage::disk('local')->path($evidence->private_path));
+            $result = AdmissionDocumentScanning::scan($scanner, $absolutePath, (string) $evidence->sha256);
             $this->complete($result->status === 'rejected' ? 'infected' : $result->status, $result->code, $scanner->name(), $audit);
         } finally {
             $context->clear();

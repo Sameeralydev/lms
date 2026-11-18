@@ -109,3 +109,20 @@ See [PHASE_14_FINAL_CLOSURE_ADDENDUM_2026-11-10.md](PHASE_14_FINAL_CLOSURE_ADDEN
 ## SQLite regression rerun ? 2026-11-10
 
 `php artisan test --compact` exited 0: 355 passed, 4 skipped, 7,722 assertions (383.06 seconds). The Phase 14 MySQL preflight and full Chromium status are unchanged; see the closure addendum.
+
+## Fresh final regression — 2026-11-11
+
+| Check | Command | Result |
+|---|---|---|
+| MySQL preflight | `php tests/run-phase14-mysql.php --preflight` | PASS; MySQL 8.4.11; 271 objects; 81 migrations; zero pending reviewed migrations |
+| MySQL suite and concurrency | `php tests/run-phase14-mysql.php --run` | PASS; 12 tests / 459 assertions; all eight independent-session probes; ownership fingerprint unchanged |
+| MySQL fixture postflight | `php tests/run-phase14-mysql.php --inspect-fixtures` | PASS; zero tenant fixtures |
+| SQLite | `php artisan test --compact` | PASS; 355 passed, 4 skipped, 7,722 assertions |
+| Focused Phase 14 browser | `npm.cmd exec -- playwright test tests/e2e/phase14-gradebook.spec.ts --project=chromium --trace=off` | PASS; 1 passed |
+| Full scanner-enabled Chromium | `npm.cmd run test:e2e` | PASS; 44 passed; exit 0; 31.6 minutes |
+| Vitest | `npm.cmd run test:unit` | PASS; 24 tests across 3 files |
+| Static / format / build | `composer analyse`, `vendor/bin/pint --test`, `npm.cmd run typecheck`, `npm.cmd run lint`, `npm.cmd run format:check`, `npm.cmd run build` | PASS |
+| Dependency audits | `composer audit`, `npm.cmd audit --omit=dev`, `npm.cmd audit` | Composer PASS; production npm 0 vulnerabilities; full npm 10 moderate dev-tooling advisories (owner pending) |
+| Syntax / diff | PHP `-l` for app/database/routes/tests; `git diff --check` | 612 PHP files pass; diff check pass |
+
+See [final closure evidence](PHASE_14_FINAL_FUNCTIONAL_CLOSURE_2026-11-11.md) for environment and security disposition.

@@ -124,7 +124,7 @@ final class ExamComponentController extends Controller
 
     public function uploadScript(Tenant $tenant, int $sessionId, Request $request, ExamComponentWorkflow $workflow): RedirectResponse
     {
-        $data = $request->validate(['candidate_id' => ['required', 'integer', 'min:1'], 'component_id' => ['nullable', 'integer', 'min:1'], 'file' => ['required', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,webp,txt,doc,docx,odt']]);
+        $data = $request->validate(['candidate_id' => ['required', 'integer', 'min:1'], 'component_id' => ['nullable', 'integer', 'min:1'], 'file' => ['required', 'file', 'extensions:pdf,jpg,jpeg,png,webp,txt,doc,docx,odt']]);
         $script = $workflow->uploadScript($sessionId, isset($data['component_id']) ? (int) $data['component_id'] : null, (int) $data['candidate_id'], $data['file'], $request->user());
 
         return back()->with('status', $script->scan_status === 'clean' ? 'Script passed scanning and is available only to assigned exam roles.' : 'Script remains quarantined because scanning did not approve it.');

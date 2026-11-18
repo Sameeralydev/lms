@@ -180,6 +180,62 @@ final class ClamAvSignatureMetadataTest extends TestCase
         self::assertContains('--database='.$this->signatureDirectory, $commands[3][0]);
     }
 
+    public function test_malware_exit_code_is_deterministically_rejected(): void
+    {
+        $commands = [];
+        $builtAt = new DateTimeImmutable('now', $this->utc);
+        $executor = function (array $arguments) use (&$commands, $builtAt): array {
+            $commands[] = $arguments;
+            if (in_array('--version', $arguments, true)) {
+                return ['exit_code' => 0, 'output' => $this->versionMetadata($builtAt, 28184), 'error_output' => ''];
+            }
+            if (in_array('--info', $arguments, true)) {
+                return ['exit_code' => 0, 'output' => $this->sigtoolMetadata($arguments[2], $builtAt, 28184), 'error_output' => ''];
+            }
+
+            return ['exit_code' => 1, 'output' => 'Eicar-Signature', 'error_output' => ''];
+        };
+        $scanner = new ClamAvAdmissionDocumentScanner(PHP_BINARY, 48, 'UTC', $this->signatureDirectory, PHP_BINARY, $executor);
+
+        $result = $scanner->scan(__FILE__);
+
+        self::assertSame('rejected', $result->status);
+        self::assertSame('malware_detected', $result->code);
+        self::assertCount(4, $commands);
+        self::assertContains('--database='.$this->signatureDirectory, $commands[3]);
+    }
+
+    public function test_file_changed_during_a_clean_scan_is_never_accepted(): void
+    {
+        $subject = sys_get_temp_dir().DIRECTORY_SEPARATOR.'phase15-clamav-integrity-'.bin2hex(random_bytes(8)).'.txt';
+        file_put_contents($subject, 'original quarantined bytes');
+        $builtAt = new DateTimeImmutable('now', $this->utc);
+        $executor = function (array $arguments) use ($builtAt, $subject): array {
+            if (in_array('--version', $arguments, true)) {
+                return ['exit_code' => 0, 'output' => $this->versionMetadata($builtAt, 28184), 'error_output' => ''];
+            }
+            if (in_array('--info', $arguments, true)) {
+                return ['exit_code' => 0, 'output' => $this->sigtoolMetadata($arguments[2], $builtAt, 28184), 'error_output' => ''];
+            }
+
+            file_put_contents($subject, '');
+
+            return ['exit_code' => 0, 'output' => 'stdin: OK', 'error_output' => ''];
+        };
+
+        try {
+            $scanner = new ClamAvAdmissionDocumentScanner(PHP_BINARY, 48, 'UTC', $this->signatureDirectory, PHP_BINARY, $executor);
+            $result = $scanner->scan($subject);
+        } finally {
+            if (is_file($subject)) {
+                unlink($subject);
+            }
+        }
+
+        self::assertSame('unavailable', $result->status);
+        self::assertSame('document_changed_during_scan', $result->code);
+    }
+
     public function test_scanner_timeout_fails_closed_without_clean_result(): void
     {
         $calls = 0;

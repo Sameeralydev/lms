@@ -8,6 +8,7 @@ use App\Domain\Tenancy\TenantContext;
 use App\Jobs\ScanExamAppealEvidence;
 use App\Models\ExamAppealEvidence;
 use App\Models\User;
+use App\Support\PrivateQuarantineUpload;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -21,6 +22,7 @@ final class ExaminationAppealEvidenceWorkflow
 
     public function upload(int $appealId, UploadedFile $file, User $actor): int
     {
+        PrivateQuarantineUpload::assertReadable($file);
         $membership = $this->context->membership();
         $tenantId = (int) $membership->tenant_id;
         $appeal = $this->appeal($tenantId, $appealId);
@@ -36,19 +38,11 @@ final class ExaminationAppealEvidenceWorkflow
         }
 
         $relativePath = 'examinations/'.$tenantId.'/appeals/'.$appealId.'/quarantine/'.Str::uuid().'.'.$extension;
-        $storedPath = $file->storeAs(dirname($relativePath), basename($relativePath), 'local');
-        if ($storedPath !== $relativePath) {
-            throw new \RuntimeException('Appeal evidence could not be stored in private quarantine.');
-        }
-        $absolutePath = Storage::disk('local')->path($relativePath);
-        $sha256 = hash_file('sha256', $absolutePath);
-        if (! is_string($sha256)) {
-            Storage::disk('local')->delete($relativePath);
-            throw new \RuntimeException('Appeal evidence could not be fingerprinted.');
-        }
+        $staged = PrivateQuarantineUpload::stage($file, $relativePath);
+        $sha256 = $staged['sha256'];
 
         try {
-            return DB::transaction(function () use ($appealId, $file, $actor, $tenantId, $relativePath, $sha256, $membership): int {
+            return DB::transaction(function () use ($appealId, $file, $actor, $tenantId, $relativePath, $sha256, $membership, $staged): int {
                 $locked = DB::table('exam_recheck_requests')->where('tenant_id', $tenantId)->where('id', $appealId)->lockForUpdate()->first();
                 abort_unless($locked !== null && $locked->request_type === 'appeal', 404);
                 $this->assertUploader($locked, $membership, $actor);
@@ -61,7 +55,7 @@ final class ExaminationAppealEvidenceWorkflow
                     'private_path' => $relativePath,
                     'original_name' => mb_substr(strip_tags(basename(str_replace('\\', '/', $file->getClientOriginalName()))), 0, 180),
                     'mime_type' => (string) $file->getMimeType(),
-                    'size_bytes' => (int) $file->getSize(),
+                    'size_bytes' => $staged['size'],
                     'sha256' => $sha256,
                     'scan_status' => 'quarantined',
                 ])->getKey();

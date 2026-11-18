@@ -20,6 +20,7 @@ use App\Models\AdmissionSetting;
 use App\Models\Institution;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Support\PrivateQuarantineUpload;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
@@ -251,16 +252,19 @@ final class ApplicantAdmissionsController extends Controller
         $file = $request->validate([
             'file' => ['required', 'file', 'max:'.(int) floor(min($requirement->maximum_bytes, 10485760) / 1024), 'mimes:pdf,jpg,jpeg,png', 'mimetypes:application/pdf,image/jpeg,image/png'],
         ])['file'];
+        if ($file instanceof UploadedFile) {
+            PrivateQuarantineUpload::assertReadable($file);
+        }
         if (! $file instanceof UploadedFile || ! in_array($file->getMimeType(), $allowed, true)) {
             abort(422, 'The file content does not match an allowed format.');
         }
         $this->assertFileSignature($file, (string) $file->getMimeType());
         $path = 'admissions/'.$application->tenant_id.'/'.$application->getKey().'/'.Str::uuid().'.'.$file->extension();
-        $storedPath = Storage::disk('local')->putFileAs(dirname($path), $file, basename($path));
-        abort_unless(is_string($storedPath), 500, 'The private document could not be stored.');
+        $staged = PrivateQuarantineUpload::stage($file, $path);
+        $storedPath = $staged['path'];
 
         try {
-            [$document, $documentVersion, $scanEvent] = DB::transaction(function () use ($application, $requirement, $request, $file, $storedPath): array {
+            [$document, $documentVersion, $scanEvent] = DB::transaction(function () use ($application, $requirement, $request, $file, $storedPath, $staged): array {
                 AdmissionApplication::query()->lockForUpdate()->findOrFail($application->getKey());
                 $existing = AdmissionDocument::query()->where('application_id', $application->getKey())
                     ->where('requirement_id', $requirement->getKey())->lockForUpdate()->first();
@@ -273,7 +277,7 @@ final class ApplicantAdmissionsController extends Controller
                     'document_id' => $document->getKey(), 'version_number' => $nextVersion, 'private_path' => $storedPath,
                     'original_name' => $this->safeOriginalName((string) $file->getClientOriginalName(), (string) $file->extension()),
                     'mime_type' => (string) $file->getMimeType(), 'size_bytes' => (int) $file->getSize(),
-                    'sha256' => hash_file('sha256', (string) $file->getRealPath()), 'uploaded_by' => $request->user()->getKey(),
+                    'sha256' => $staged['sha256'], 'uploaded_by' => $request->user()->getKey(),
                 ]);
                 $document->forceFill(['status' => 'pending', 'scan_status' => 'pending', 'current_version' => $documentVersion->version_number, 'review_note' => null, 'reviewed_at' => null, 'reviewed_by' => null])->save();
 

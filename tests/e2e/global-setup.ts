@@ -69,6 +69,8 @@ export default function globalSetup(): void {
         schedulingReviewerPassword: string;
         examinationControllerEmail: string;
         examinationControllerPassword: string;
+        examinerEmail: string;
+        examinerPassword: string;
         examinationInvigilatorEmail: string;
         examinationInvigilatorPassword: string;
         registrationInstructorEmail: string;
@@ -124,6 +126,8 @@ export default function globalSetup(): void {
     process.env.E2E_SCHEDULING_REVIEWER_PASSWORD = fixtures.schedulingReviewerPassword;
     process.env.E2E_EXAMINATION_CONTROLLER_EMAIL = fixtures.examinationControllerEmail;
     process.env.E2E_EXAMINATION_CONTROLLER_PASSWORD = fixtures.examinationControllerPassword;
+    process.env.E2E_EXAMINER_EMAIL = fixtures.examinerEmail;
+    process.env.E2E_EXAMINER_PASSWORD = fixtures.examinerPassword;
     process.env.E2E_EXAMINATION_INVIGILATOR_EMAIL = fixtures.examinationInvigilatorEmail;
     process.env.E2E_EXAMINATION_INVIGILATOR_PASSWORD = fixtures.examinationInvigilatorPassword;
     process.env.E2E_REGISTRATION_INSTRUCTOR_EMAIL = fixtures.registrationInstructorEmail;

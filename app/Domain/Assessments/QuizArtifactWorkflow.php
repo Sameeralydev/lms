@@ -3,6 +3,7 @@
 namespace App\Domain\Assessments;
 
 use App\Domain\Admissions\Documents\AdmissionDocumentScanner;
+use App\Domain\Admissions\Documents\AdmissionDocumentScanning;
 use App\Domain\Audit\AuditRecorder;
 use App\Domain\Tenancy\TenantContext;
 use App\Models\QuizAttempt;
@@ -10,6 +11,7 @@ use App\Models\QuizFileArtifact;
 use App\Models\QuizQuestionVersion;
 use App\Models\TenantMembership;
 use App\Models\User;
+use App\Support\PrivateQuarantineUpload;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -141,6 +143,7 @@ final class QuizArtifactWorkflow
 
     private function storeAndScan(UploadedFile $file, User $actor, string $purpose, int $questionVersionId, ?int $attemptId): QuizFileArtifact
     {
+        PrivateQuarantineUpload::assertReadable($file);
         $mime = (string) $file->getMimeType();
         if (! isset(self::MIME_EXTENSIONS[$mime]) || ! $file->isValid() || (int) $file->getSize() < 1 || (int) $file->getSize() > self::MAX_BYTES) {
             throw ValidationException::withMessages(['file' => 'Upload a supported document or image no larger than 10 MB.']);
@@ -149,35 +152,34 @@ final class QuizArtifactWorkflow
         $extension = self::MIME_EXTENSIONS[$mime];
         $filename = (string) Str::uuid().'.'.$extension;
         $directory = 'assessments/'.$tenantId.'/quarantine';
-        $path = Storage::disk('local')->putFileAs($directory, $file, $filename);
-        if (! is_string($path)) {
-            throw new \RuntimeException('The assessment artifact could not be stored in private quarantine.');
-        }
+        $staged = PrivateQuarantineUpload::stage($file, $directory.'/'.$filename);
+        $path = $staged['path'];
         $absolutePath = Storage::disk('local')->path($path);
-        $hash = hash_file('sha256', $absolutePath);
-        if (! is_string($hash)) {
-            Storage::disk('local')->delete($path);
-            throw new \RuntimeException('The assessment artifact integrity hash could not be calculated.');
-        }
+        $hash = $staged['sha256'];
         $originalName = preg_replace('/[\x00-\x1F\x7F]/u', '', basename($file->getClientOriginalName())) ?: 'assessment-upload.'.$extension;
         $originalName = mb_substr($originalName, 0, 255);
-        $artifact = DB::transaction(function () use ($tenantId, $questionVersionId, $attemptId, $purpose, $actor, $originalName, $mime, $file, $hash, $path): QuizFileArtifact {
-            $artifact = QuizFileArtifact::query()->create([
-                'question_version_id' => $questionVersionId, 'attempt_id' => $attemptId, 'purpose' => $purpose,
-                'uploaded_by' => $actor->getKey(), 'original_name' => $originalName, 'mime_type' => $mime,
-                'size_bytes' => (int) $file->getSize(), 'sha256' => $hash, 'private_path' => $path,
-                'scan_status' => 'quarantined',
-            ]);
-            $this->audit->record('assessment.artifact.quarantined', $actor, $tenantId, $artifact, [
-                'artifact_id' => $artifact->getKey(), 'purpose' => $purpose, 'mime_type' => $mime,
-                'size_bytes' => (int) $file->getSize(), 'sha256' => $hash,
-            ]);
+        try {
+            $artifact = DB::transaction(function () use ($tenantId, $questionVersionId, $attemptId, $purpose, $actor, $originalName, $mime, $file, $hash, $path, $staged): QuizFileArtifact {
+                $artifact = QuizFileArtifact::query()->create([
+                    'question_version_id' => $questionVersionId, 'attempt_id' => $attemptId, 'purpose' => $purpose,
+                    'uploaded_by' => $actor->getKey(), 'original_name' => $originalName, 'mime_type' => $mime,
+                    'size_bytes' => $staged['size'], 'sha256' => $hash, 'private_path' => $path,
+                    'scan_status' => 'quarantined',
+                ]);
+                $this->audit->record('assessment.artifact.quarantined', $actor, $tenantId, $artifact, [
+                    'artifact_id' => $artifact->getKey(), 'purpose' => $purpose, 'mime_type' => $mime,
+                    'size_bytes' => (int) $file->getSize(), 'sha256' => $hash,
+                ]);
 
-            return $artifact;
-        }, 3);
+                return $artifact;
+            }, 3);
+        } catch (\Throwable $exception) {
+            Storage::disk('local')->delete($path);
+            throw $exception;
+        }
 
         $artifact->forceFill(['scan_status' => 'scanning', 'scanner' => $this->scanner->name()])->save();
-        $scan = $this->scanner->scan($absolutePath);
+        $scan = AdmissionDocumentScanning::scan($this->scanner, $absolutePath, $hash);
         $status = match ($scan->status) {
             'clean' => 'clean', 'rejected' => 'infected', default => 'unavailable'
         };

@@ -82,3 +82,17 @@ Latest functional completion evidence (2026-11-10): see PHASE_14_FINAL_FUNCTIONA
 ## Fresh closure evidence ? 2026-11-10
 
 See [PHASE_14_FINAL_CLOSURE_ADDENDUM_2026-11-10.md](PHASE_14_FINAL_CLOSURE_ADDENDUM_2026-11-10.md) for this pass's detailed evidence. Key disposition: focused guardian published-grade workflow passed (9 tests / 447 assertions); focused guardian browser test passed after asset rebuild; TypeScript, ESLint, Prettier, Vitest (24), Composer audit, production npm audit, and Vite production build passed. The earlier full Chromium run remains 42 passed / 2 failed and was not rerun as a complete suite. Phase 14 MySQL preflight exited 2 because private `.env.phase14.testing` is absent; MySQL tests and all eight concurrency probes were not run. Phase 14 remains BLOCKED; no Phase 15 work started.
+
+## Current closure traceability — 2026-11-11
+
+| Requirement | Current evidence | Status |
+|---|---|---|
+| Registrar grade, report, official-record, GPA and audit workspaces | Authenticated Playwright workflow and persisted-state assertions in `tests/e2e/phase14-gradebook.spec.ts`; Phase 14 feature coverage in `Phase14GradebookFoundationTest`. | PASS |
+| Student/guardian published data and document access | Authenticated student and verified-guardian routes; published-only results, issued records, private PDFs, and excluded unapproved guardian notification asserted. | PASS |
+| Academic notification outbox | Event-to-recipient mappings in `QuizOutboxProcessor`; workflow events in grading/record services; delivery, recipient scope and idempotent retry assertions. | PASS |
+| Six-theme Phase 14 screen coverage | 14 authenticated screen-role contexts x six themes, 84 screenshots, axe checks; responsive/focus/persistence checks as detailed in the closure addendum. | PASS for the enumerated Phase 14 screens |
+| Guarded Phase 14 MySQL and concurrency | 12 tests / 459 assertions; eight independent-session probes; postflight ownership preserved. | PASS |
+| Full scanner-enabled browser regression | 44 passed, exit 0, including the updated Phase 14 journey and scanner-dependent workflows. | PASS |
+| Dependency risk | Production audit clean; full npm audit has 10 moderate development-tooling advisories. | Owner decision pending |
+
+Detailed reproducible evidence: [2026-11-11 final closure](PHASE_14_FINAL_FUNCTIONAL_CLOSURE_2026-11-11.md). Historical earlier blockers remain in this document as history and are superseded only by the newer evidence above.

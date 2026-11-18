@@ -3,6 +3,7 @@
 namespace App\Domain\Academic\Curriculum;
 
 use App\Domain\Admissions\Documents\AdmissionDocumentScanner;
+use App\Domain\Admissions\Documents\AdmissionDocumentScanning;
 use App\Domain\Audit\AuditRecorder;
 use App\Domain\Tenancy\TenantContext;
 use App\Models\AcademicCompetency;
@@ -283,7 +284,7 @@ final class CurriculumGovernanceService
         abort_unless(is_file($absolute) && ! is_link($absolute) && is_readable($absolute), 404);
         $digest = hash_file('sha256', $absolute);
         abort_unless(is_string($digest) && hash_equals((string) $document->file_sha256, $digest), 409, 'The controlled document integrity check failed.');
-        $result = $scanner->scan($absolute);
+        $result = AdmissionDocumentScanning::scan($scanner, $absolute, (string) $document->file_sha256);
         if ($result->status !== 'clean') {
             $this->audit->record('academic.curriculum.resource.download_blocked', $actor, $tenantId, $resource, ['document_id' => $document->getKey(), 'scan_status' => $result->status, 'result_code' => $result->code]);
             abort($result->status === 'unavailable' ? 503 : 404, 'This document is not available for download.');

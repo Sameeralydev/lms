@@ -3,17 +3,18 @@
 namespace App\Domain\Learning;
 
 use App\Domain\Admissions\Documents\AdmissionDocumentScanner;
+use App\Domain\Admissions\Documents\AdmissionDocumentScanning;
 use App\Domain\Audit\AuditRecorder;
 use App\Domain\Tenancy\TenantContext;
 use App\Models\CourseDeliveryBlock;
 use App\Models\CourseDeliveryLesson;
 use App\Models\User;
+use App\Support\PrivateQuarantineUpload;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
-use RuntimeException;
 use Throwable;
 
 /** Handles private learning media uploads and fail-closed malware scanning. */
@@ -44,6 +45,7 @@ final class CourseDeliveryMediaWorkflow
     /** @param array{alt_text:?string,license_label:string,attribution:?string,transcript:?string} $metadata */
     public function upload(User $actor, CourseDeliveryLesson $lesson, UploadedFile $file, array $metadata, ?int $replacesAssetId = null): CourseDeliveryBlock
     {
+        PrivateQuarantineUpload::assertReadable($file);
         $lesson = CourseDeliveryLesson::query()->with('workspace')->findOrFail($lesson->getKey());
         $workspace = $lesson->workspace;
         $this->delivery->assertCanManage($actor, $workspace);
@@ -72,10 +74,7 @@ final class CourseDeliveryMediaWorkflow
         $reference = (string) Str::uuid();
         $directory = 'learning/'.$tenant->public_id.'/'.$workspace->public_id.'/lessons/'.$lesson->getKey();
         $quarantinePath = $directory.'/quarantine/'.$reference.'.'.$fileType['extension'];
-        $stored = $file->storeAs(dirname($quarantinePath), basename($quarantinePath), 'local');
-        if (! is_string($stored) || $stored !== $quarantinePath) {
-            throw new RuntimeException('The learning media file could not be placed in private quarantine.');
-        }
+        $staged = PrivateQuarantineUpload::stage($file, $quarantinePath);
 
         $safeName = basename((string) $file->getClientOriginalName());
         $safeName = preg_replace('/[^A-Za-z0-9._ -]/', '_', $safeName) ?: 'learning-resource.'.$fileType['extension'];
@@ -87,8 +86,8 @@ final class CourseDeliveryMediaWorkflow
             'original_name' => mb_substr($safeName, 0, 180),
             'mime_type' => $mime,
             'media_type' => $fileType['kind'],
-            'size_bytes' => (int) ($file->getSize() ?: 0),
-            'sha256' => hash_file('sha256', Storage::disk('local')->path($quarantinePath)) ?: null,
+            'size_bytes' => $staged['size'],
+            'sha256' => $staged['sha256'],
             'storage_status' => 'active',
             'scan_status' => 'quarantined',
             'scanner' => null,
@@ -120,7 +119,7 @@ final class CourseDeliveryMediaWorkflow
         $absolutePath = Storage::disk('local')->path($quarantinePath);
         $status = 'unavailable';
         try {
-            $result = $this->scanner->scan($absolutePath);
+            $result = AdmissionDocumentScanning::scan($this->scanner, $absolutePath, (string) $content['sha256']);
             $status = $result->status;
         } catch (Throwable) {
         }

@@ -8,6 +8,7 @@ use App\Domain\Tenancy\TenantContext;
 use App\Jobs\ScanExamIncidentEvidence;
 use App\Models\ExamIncidentEvidence;
 use App\Models\User;
+use App\Support\PrivateQuarantineUpload;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -21,6 +22,7 @@ final class ExaminationIncidentEvidenceWorkflow
 
     public function upload(int $incidentId, UploadedFile $file, User $actor): int
     {
+        PrivateQuarantineUpload::assertReadable($file, 'evidence');
         $membership = $this->context->membership();
         abort_unless($membership->hasPermission('exams.incidents.report') || $membership->hasPermission('exams.incidents.review'), 403);
         $tenantId = (int) $membership->tenant_id;
@@ -36,18 +38,10 @@ final class ExaminationIncidentEvidenceWorkflow
             throw new HttpException(422, 'Evidence must be a PDF or image file.');
         }
         $relativePath = 'examinations/'.$tenantId.'/incidents/'.$incidentId.'/quarantine/'.Str::uuid().'.'.$extension;
-        $storedPath = $file->storeAs(dirname($relativePath), basename($relativePath), 'local');
-        if ($storedPath !== $relativePath) {
-            throw new \RuntimeException('Incident evidence could not be stored in private quarantine.');
-        }
-        $absolutePath = Storage::disk('local')->path($relativePath);
-        $sha256 = hash_file('sha256', $absolutePath);
-        if (! is_string($sha256)) {
-            Storage::disk('local')->delete($relativePath);
-            throw new \RuntimeException('Incident evidence could not be fingerprinted.');
-        }
+        $staged = PrivateQuarantineUpload::stage($file, $relativePath, 'evidence');
+        $sha256 = $staged['sha256'];
         try {
-            $id = DB::transaction(function () use ($incidentId, $file, $actor, $tenantId, $relativePath, $sha256): int {
+            $id = DB::transaction(function () use ($incidentId, $file, $actor, $tenantId, $relativePath, $sha256, $staged): int {
                 $locked = DB::table('exam_incidents')->where('tenant_id', $tenantId)->where('id', $incidentId)->lockForUpdate()->first();
                 abort_unless($locked !== null, 404);
                 abort_unless(in_array($locked->status, ['reported', 'reviewed', 'escalated', 'investigating'], true), 409, 'Evidence cannot be added after the incident is resolved or closed.');
@@ -58,11 +52,11 @@ final class ExaminationIncidentEvidenceWorkflow
                     'private_path' => $relativePath,
                     'original_name' => mb_substr(strip_tags(basename(str_replace('\\', '/', $file->getClientOriginalName()))), 0, 180),
                     'mime_type' => (string) $file->getMimeType(),
-                    'size_bytes' => (int) $file->getSize(),
+                    'size_bytes' => $staged['size'],
                     'sha256' => $sha256,
                     'scan_status' => 'quarantined',
                 ])->getKey();
-                $this->audit->record('exams.incident.evidence.quarantined', $actor, $tenantId, null, ['incident_id' => $incidentId, 'evidence_id' => $id, 'sha256' => $sha256, 'size_bytes' => (int) $file->getSize()]);
+                $this->audit->record('exams.incident.evidence.quarantined', $actor, $tenantId, null, ['incident_id' => $incidentId, 'evidence_id' => $id, 'sha256' => $sha256, 'size_bytes' => $staged['size']]);
                 ScanExamIncidentEvidence::dispatch($tenantId, $id)->afterCommit();
 
                 return $id;

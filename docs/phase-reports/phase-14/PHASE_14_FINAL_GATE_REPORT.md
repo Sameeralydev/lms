@@ -96,3 +96,22 @@ See [PHASE_14_FINAL_CLOSURE_ADDENDUM_2026-11-10.md](PHASE_14_FINAL_CLOSURE_ADDEN
 ## SQLite regression rerun ? 2026-11-10
 
 `php artisan test --compact` exited 0: 355 passed, 4 skipped, 7,722 assertions (383.06 seconds). The Phase 14 MySQL preflight and full Chromium status are unchanged; see the closure addendum.
+
+## Current final closure — 2026-11-11
+
+See [final functional closure evidence](PHASE_14_FINAL_FUNCTIONAL_CLOSURE_2026-11-11.md). This fresh evidence supersedes earlier blocked status lines where the newer run differs.
+
+```text
+PHASE14_IMPLEMENTATION=COMPLETE
+PHASE14_ENGINEERING=PASS
+MYSQL_TESTS=PASS
+CONCURRENCY=8/8
+REGISTRAR_WORKSPACE=PASS
+GUARDIAN_WORKSPACE=PASS
+NOTIFICATIONS=PASS
+FULL_CHROMIUM=PASS (44/44)
+PHASE14_SIX_THEME_MATRIX=PASS (14 authenticated screen-role contexts x 6 themes; 84 screenshots)
+OWNER_NPM_RISK=PENDING
+```
+
+The local engineering gate passes. Do not treat the owner npm risk disposition as approved. Production dependency audit is clean; full audit retains 10 moderate development-tooling findings. Phase 15 was not started.

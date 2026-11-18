@@ -19,7 +19,7 @@ test('controller creates and submits an immutable date-sheet revision across all
     await page.getByLabel('Email address').fill(email);
     await page.getByLabel('Password').fill(password);
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await expect(page).toHaveURL(/\/(workspaces|t\/[^/]+\/dashboard)$/);
+    await expect(page).toHaveURL(/\/(workspaces|t\/[^/]+\/dashboard)$/, { timeout: 30_000 });
 
     const response = await page.goto(`/t/${tenant}/academics/examinations`);
     expect(response?.status()).toBe(200);

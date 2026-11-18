@@ -257,6 +257,11 @@ final class OfficialAcademicRecordWorkflow
         abort_unless($membership->hasPermission('academic.records.review'), 403);
 
         return DB::transaction(function () use ($issueId, $reason, $actor, $membership): AcademicRecordIssue {
+            // Reissue preparation locks the student before inspecting issue history.
+            // Use the same lock order here so a revoke racing a reissue cannot leave
+            // the replacement linked to an ambiguous pre-revocation state.
+            $candidate = AcademicRecordIssue::query()->findOrFail($issueId);
+            SisStudent::query()->whereKey($candidate->student_id)->lockForUpdate()->firstOrFail();
             $issue = AcademicRecordIssue::query()->lockForUpdate()->findOrFail($issueId);
             abort_unless((int) $issue->institution_id === (int) $membership->institution_id, 404);
             $this->academicAccess->assertCampus($issue->student->home_campus_id === null ? null : (int) $issue->student->home_campus_id);
@@ -438,7 +443,7 @@ final class OfficialAcademicRecordWorkflow
         }
         $currentCourses = $this->publishedGrades((int) $membership->tenant_id, (int) $membership->institution_id, (int) $issue->student_id, $issue->academic_period_id === null ? null : (int) $issue->academic_period_id, $campusId);
         $snapshot = $issue->record_snapshot;
-        if (json_encode($currentCourses, JSON_THROW_ON_ERROR) !== json_encode($snapshot['courses'] ?? [], JSON_THROW_ON_ERROR)) {
+        if ($this->canonicalJson($currentCourses) !== $this->canonicalJson((array) ($snapshot['courses'] ?? []))) {
             throw new ConflictHttpException('Published grades changed after this record draft. Prepare a new version before approval or issuance.');
         }
         $gpaSnapshotId = $snapshot['gpa']['snapshot_id'] ?? null;
@@ -448,6 +453,21 @@ final class OfficialAcademicRecordWorkflow
                 throw new ConflictHttpException('The GPA snapshot changed after this record draft. Prepare a new version before approval or issuance.');
             }
         }
+    }
+
+    /** Compare JSON structures independent of object-key ordering across database engines. */
+    private function canonicalJson(mixed $value): string
+    {
+        if (is_array($value)) {
+            if (! array_is_list($value)) {
+                ksort($value, SORT_STRING);
+            }
+            foreach ($value as $key => $nested) {
+                $value[$key] = json_decode($this->canonicalJson($nested), true, 512, JSON_THROW_ON_ERROR);
+            }
+        }
+
+        return json_encode($value, JSON_THROW_ON_ERROR);
     }
 
     private function queueRecordNotification(AcademicRecordIssue $issue, string $eventType): void

@@ -3,6 +3,7 @@
 namespace App\Domain\Examinations;
 
 use App\Domain\Admissions\Documents\AdmissionDocumentScanner;
+use App\Domain\Admissions\Documents\AdmissionDocumentScanning;
 use App\Domain\Audit\AuditRecorder;
 use App\Domain\Tenancy\TenantContext;
 use App\Models\ExamAnswerScript;
@@ -15,6 +16,7 @@ use App\Models\ExamComponentMarking;
 use App\Models\ExamSession;
 use App\Models\TenantMembership;
 use App\Models\User;
+use App\Support\PrivateQuarantineUpload;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
@@ -323,30 +325,25 @@ final class ExamComponentWorkflow
         if ($componentId !== null) {
             abort_unless(ExamComponent::query()->whereKey($componentId)->where('session_id', $sessionId)->exists(), 404);
         }
-        $mime = (string) $file->getMimeType();
-        if (! isset(self::MIME_EXTENSIONS[$mime]) || ! $file->isValid() || (int) $file->getSize() < 1 || (int) $file->getSize() > 10 * 1024 * 1024) {
+        $mime = PrivateQuarantineUpload::mimeType($file);
+        $size = PrivateQuarantineUpload::size($file);
+        if (! isset(self::MIME_EXTENSIONS[$mime]) || $size > 10 * 1024 * 1024) {
             throw ValidationException::withMessages(['file' => 'Upload a supported document or image up to 10 MB.']);
         }
         $tenantId = (int) $session->tenant_id;
         $extension = self::MIME_EXTENSIONS[$mime];
-        $path = Storage::disk('local')->putFileAs('examinations/'.$tenantId.'/quarantine', $file, (string) Str::uuid().'.'.$extension);
-        if (! is_string($path)) {
-            throw new \RuntimeException('The private answer script could not be stored.');
-        }
+        $path = 'examinations/'.$tenantId.'/quarantine/'.Str::uuid().'.'.$extension;
+        $staged = PrivateQuarantineUpload::stage($file, $path);
         $absolute = Storage::disk('local')->path($path);
-        $sha = hash_file('sha256', $absolute);
-        if (! is_string($sha)) {
-            Storage::disk('local')->delete($path);
-            throw new \RuntimeException('The answer script integrity hash could not be calculated.');
-        }
+        $sha = $staged['sha256'];
         try {
-            $script = DB::transaction(function () use ($sessionId, $componentId, $candidateId, $file, $mime, $path, $sha, $actor): ExamAnswerScript {
+            $script = DB::transaction(function () use ($sessionId, $componentId, $candidateId, $file, $mime, $path, $sha, $actor, $staged): ExamAnswerScript {
                 $revision = (int) ExamAnswerScript::query()->where('session_id', $sessionId)->where('candidate_id', $candidateId)->when($componentId === null, fn ($query) => $query->whereNull('component_id'), fn ($query) => $query->where('component_id', $componentId))->max('revision') + 1;
 
                 return ExamAnswerScript::query()->create([
                     'session_id' => $sessionId, 'candidate_id' => $candidateId, 'component_id' => $componentId, 'revision' => $revision,
                     'original_name' => mb_substr(preg_replace('/[\x00-\x1F\x7F]/u', '', basename($file->getClientOriginalName())) ?: 'answer-script', 0, 255),
-                    'mime_type' => $mime, 'size_bytes' => (int) $file->getSize(), 'sha256' => $sha, 'private_path' => $path,
+                    'mime_type' => $mime, 'size_bytes' => $staged['size'], 'sha256' => $sha, 'private_path' => $path,
                     'scan_status' => 'quarantined', 'uploaded_by' => $actor->getKey(), 'retention_until' => now()->addYears(7),
                 ]);
             }, 3);
@@ -355,7 +352,7 @@ final class ExamComponentWorkflow
             throw $exception;
         }
         $script->forceFill(['scan_status' => 'scanning', 'scanner' => $this->scanner->name()])->save();
-        $scan = $this->scanner->scan($absolute);
+        $scan = AdmissionDocumentScanning::scan($this->scanner, $absolute, $sha);
         $status = match ($scan->status) {
             'clean' => 'clean', 'rejected' => 'infected', default => 'unavailable'
         };

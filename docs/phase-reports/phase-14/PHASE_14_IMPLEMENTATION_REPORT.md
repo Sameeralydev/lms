@@ -75,3 +75,9 @@ Latest functional completion evidence (2026-11-10): see PHASE_14_FINAL_FUNCTIONA
 ## Fresh closure evidence ? 2026-11-10
 
 See [PHASE_14_FINAL_CLOSURE_ADDENDUM_2026-11-10.md](PHASE_14_FINAL_CLOSURE_ADDENDUM_2026-11-10.md) for this pass's detailed evidence. Key disposition: focused guardian published-grade workflow passed (9 tests / 447 assertions); focused guardian browser test passed after asset rebuild; TypeScript, ESLint, Prettier, Vitest (24), Composer audit, production npm audit, and Vite production build passed. The earlier full Chromium run remains 42 passed / 2 failed and was not rerun as a complete suite. Phase 14 MySQL preflight exited 2 because private `.env.phase14.testing` is absent; MySQL tests and all eight concurrency probes were not run. Phase 14 remains BLOCKED; no Phase 15 work started.
+
+## Current functional closure — 2026-11-11
+
+Registrar operations now have authenticated evidence for official grade review/publication, record templates and issue lifecycles, academic history, reporting/export, and GPA policy/standing. Student and verified-guardian workspaces have authenticated evidence for published grades/progress and authorized academic records. Outbox mappings and tests cover grade submission/review/publication, corrections, record decisions, issuance/revocation, report-card comments, idempotent retry, and recipient scoping. The Phase 14 screen matrix now contains 14 authenticated role/screen contexts across six themes. See [the closure evidence](PHASE_14_FINAL_FUNCTIONAL_CLOSURE_2026-11-11.md).
+
+Current updated test evidence includes guarded MySQL 12/459, all eight independent-session probes, SQLite 355/4 skipped/7,722, and full scanner-enabled Chromium 44/44. No prior feature was rebuilt; this pass added six-theme browser checks for six additional Phase 14 screens.

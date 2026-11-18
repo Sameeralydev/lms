@@ -3,9 +3,11 @@
 namespace App\Jobs;
 
 use App\Domain\Admissions\Documents\AdmissionDocumentScanner;
+use App\Domain\Admissions\Documents\AdmissionDocumentScanning;
 use App\Domain\Tenancy\TenantContext;
 use App\Models\AttendanceJustificationEvidence;
 use App\Models\Tenant;
+use App\Support\PrivateFileFingerprint;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -36,12 +38,18 @@ final class ScanAttendanceJustificationEvidence implements ShouldQueue
                 return;
             }
             $absolutePath = Storage::disk('local')->path($evidence->private_path);
-            if (! hash_equals($evidence->sha256, (string) hash_file('sha256', $absolutePath))) {
+            $actualHash = PrivateFileFingerprint::sha256($absolutePath);
+            if ($actualHash === null) {
+                $evidence->forceFill(['scan_status' => 'unavailable', 'result_code' => 'file_unavailable', 'scanner' => $scanner->name(), 'scanned_at' => now()])->save();
+
+                return;
+            }
+            if (! hash_equals($evidence->sha256, $actualHash)) {
                 $evidence->forceFill(['scan_status' => 'rejected', 'result_code' => 'digest_mismatch', 'scanner' => $scanner->name(), 'scanned_at' => now()])->save();
 
                 return;
             }
-            $result = $scanner->scan($absolutePath);
+            $result = AdmissionDocumentScanning::scan($scanner, $absolutePath, (string) $evidence->sha256);
             $evidence->forceFill([
                 'scan_status' => $result->status, 'result_code' => $result->code,
                 'scanner' => $scanner->name(), 'scanned_at' => now(),

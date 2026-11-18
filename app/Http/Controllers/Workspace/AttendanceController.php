@@ -18,6 +18,7 @@ use App\Models\AttendanceStatusDefinition;
 use App\Models\Campus;
 use App\Models\SisStudentGuardian;
 use App\Models\Tenant;
+use App\Support\PrivateQuarantineUpload;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
@@ -413,6 +414,7 @@ final class AttendanceController
 
     private function storeJustificationEvidence(Request $request, AttendanceJustification $justification, UploadedFile $file): int
     {
+        PrivateQuarantineUpload::assertReadable($file, 'evidence');
         $tenantId = (int) $this->context->tenant()->getKey();
         $extension = match ($file->getMimeType()) {
             'application/pdf' => 'pdf', 'image/jpeg' => 'jpg', 'image/png' => 'png',
@@ -420,16 +422,12 @@ final class AttendanceController
         };
         $filename = (string) Str::uuid().'.'.$extension;
         $path = 'attendance/'.$tenantId.'/quarantine/'.$filename;
-        $stored = $file->storeAs(dirname($path), basename($path), 'local');
-        if ($stored !== $path) {
-            throw new \RuntimeException('Attendance evidence could not be stored in private quarantine.');
-        }
-        $absolutePath = Storage::disk('local')->path($path);
+        $staged = PrivateQuarantineUpload::stage($file, $path, 'evidence');
         try {
             $evidence = AttendanceJustificationEvidence::query()->create([
                 'justification_id' => $justification->getKey(), 'private_path' => $path,
-                'sha256' => hash_file('sha256', $absolutePath) ?: '', 'mime_type' => (string) $file->getMimeType(),
-                'size_bytes' => (int) $file->getSize(), 'scan_status' => 'quarantined', 'uploaded_by' => $request->user()->getKey(),
+                'sha256' => $staged['sha256'], 'mime_type' => (string) $file->getMimeType(),
+                'size_bytes' => $staged['size'], 'scan_status' => 'quarantined', 'uploaded_by' => $request->user()->getKey(),
             ]);
         } catch (\Throwable $exception) {
             Storage::disk('local')->delete($path);

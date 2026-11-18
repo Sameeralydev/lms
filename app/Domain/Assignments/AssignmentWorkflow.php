@@ -27,6 +27,7 @@ use App\Models\Institution;
 use App\Models\SisStudent;
 use App\Models\TenantMembership;
 use App\Models\User;
+use App\Support\PrivateQuarantineUpload;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\UploadedFile;
@@ -770,6 +771,7 @@ final class AssignmentWorkflow
         $attempt = $this->createOrUpdateDraft($recipient, $actor, [], null);
         $tenantId = (int) $recipient->tenant_id;
         foreach ($files as $file) {
+            PrivateQuarantineUpload::assertReadable($file, 'files');
             $mime = (string) $file->getMimeType();
             $extension = match ($mime) {
                 'application/pdf' => 'pdf',
@@ -785,15 +787,8 @@ final class AssignmentWorkflow
                 throw ValidationException::withMessages(['files' => 'A file type is not supported. Use PDF, Word, ODT, plain text, PNG or JPEG.']);
             }
             $path = 'assignments/'.$tenantId.'/quarantine/'.Str::uuid().'.'.$extension;
-            if (! Storage::disk('local')->putFileAs(dirname($path), $file, basename($path))) {
-                throw new \RuntimeException('The private assignment quarantine could not store the upload.');
-            }
-            $absolutePath = Storage::disk('local')->path($path);
-            $sha256 = hash_file('sha256', $absolutePath);
-            if (! is_string($sha256)) {
-                Storage::disk('local')->delete($path);
-                throw new \RuntimeException('The private assignment upload could not be verified.');
-            }
+            $staged = PrivateQuarantineUpload::stage($file, $path, 'files');
+            $sha256 = $staged['sha256'];
             try {
                 $artifact = DB::transaction(function () use ($attempt, $actor, $path, $file, $mime, $sha256): AssignmentArtifact {
                     $artifact = AssignmentArtifact::query()->create([

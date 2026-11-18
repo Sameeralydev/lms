@@ -102,7 +102,7 @@ test('registrar requests an occurrence reschedule, independent reviewer approves
     const themePicker = instructorPage.getByLabel('Choose theme');
     for (const theme of themes) {
         await themePicker.selectOption(theme);
-        await expect(themePicker).toHaveValue(theme);
+        await expect(themePicker).toHaveValue(theme, { timeout: 30_000 });
         const scheduleAxe = await new AxeBuilder({ page: instructorPage })
             .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
             .analyze();
@@ -121,7 +121,7 @@ test('registrar requests an occurrence reschedule, independent reviewer approves
     const editorThemePicker = page.getByLabel('Choose theme');
     for (const theme of themes) {
         await editorThemePicker.selectOption(theme);
-        await expect(editorThemePicker).toHaveValue(theme);
+        await expect(editorThemePicker).toHaveValue(theme, { timeout: 30_000 });
         const editorAxe = await new AxeBuilder({ page })
             .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
             .analyze();

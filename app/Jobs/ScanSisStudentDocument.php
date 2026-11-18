@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Domain\Admissions\Documents\AdmissionDocumentScanner;
+use App\Domain\Admissions\Documents\AdmissionDocumentScanning;
 use App\Domain\Audit\AuditRecorder;
 use App\Domain\Tenancy\TenantContext;
 use App\Models\SisPrivateDocument;
@@ -64,7 +65,7 @@ final class ScanSisStudentDocument implements ShouldQueue
             }
 
             $event->forceFill(['started_at' => now(), 'scanner' => $scanner->name()])->save();
-            $result = $scanner->scan(Storage::disk('local')->path($version->private_path));
+            $result = AdmissionDocumentScanning::scan($scanner, Storage::disk('local')->path($version->private_path), (string) $version->sha256);
             $this->complete($event, $document, $version, $result->status, $result->code, $scanner->name(), $audit);
         } finally {
             $context->clear();

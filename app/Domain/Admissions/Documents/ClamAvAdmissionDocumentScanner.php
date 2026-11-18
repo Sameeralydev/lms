@@ -8,7 +8,7 @@ use DateTimeZone;
 use Symfony\Component\Process\Process;
 use Throwable;
 
-final class ClamAvAdmissionDocumentScanner implements AdmissionDocumentScanner
+final class ClamAvAdmissionDocumentScanner implements ContentBoundAdmissionDocumentScanner
 {
     private string $scannerIdentifier = 'clamav';
 
@@ -49,9 +49,36 @@ final class ClamAvAdmissionDocumentScanner implements AdmissionDocumentScanner
 
     public function scan(string $absolutePath): AdmissionDocumentScanResult
     {
+        return $this->scanContent($absolutePath, null);
+    }
+
+    public function scanExpected(string $absolutePath, string $expectedSha256): AdmissionDocumentScanResult
+    {
+        if (preg_match('/\A[a-f0-9]{64}\z/iD', $expectedSha256) !== 1) {
+            return AdmissionDocumentScanResult::unavailable('document_integrity_unavailable');
+        }
+
+        return $this->scanContent($absolutePath, $expectedSha256);
+    }
+
+    private function scanContent(string $absolutePath, ?string $expectedSha256): AdmissionDocumentScanResult
+    {
         if ($this->binary === '' || $this->signatureDirectory === '' || ! is_dir($this->signatureDirectory)
             || ! is_readable($this->signatureDirectory) || ! is_file($absolutePath) || ! is_readable($absolutePath) || ! is_file($this->binary)) {
             return AdmissionDocumentScanResult::unavailable();
+        }
+
+        try {
+            $sourceSize = @filesize($absolutePath);
+            $sourceHash = @hash_file('sha256', $absolutePath);
+        } catch (Throwable) {
+            return AdmissionDocumentScanResult::unavailable('document_integrity_unavailable');
+        }
+        if (! is_int($sourceSize) || ! is_string($sourceHash)) {
+            return AdmissionDocumentScanResult::unavailable('document_integrity_unavailable');
+        }
+        if ($expectedSha256 !== null && ! hash_equals($expectedSha256, $sourceHash)) {
+            return AdmissionDocumentScanResult::unavailable('document_changed_before_scan');
         }
 
         try {
@@ -104,8 +131,19 @@ final class ClamAvAdmissionDocumentScanner implements AdmissionDocumentScanner
                 return AdmissionDocumentScanResult::unavailable('signature_database_stale');
             }
 
+            // A host scanner or another process can remove/replace a quarantined
+            // file while ClamAV is starting. Never accept an empty/replaced file
+            // as the clean result for the bytes that were actually uploaded.
+            if (! $this->matchesSource($absolutePath, $sourceSize, $sourceHash)) {
+                return AdmissionDocumentScanResult::unavailable('document_changed_before_scan');
+            }
+
             $scanResult = ($this->processExecutor)([$this->binary, $databaseOption, '--no-summary', '--', $absolutePath], $this->scanTimeoutSeconds, $this->timezone);
             if ($scanResult['exit_code'] === 0) {
+                if (! $this->matchesSource($absolutePath, $sourceSize, $sourceHash)) {
+                    return AdmissionDocumentScanResult::unavailable('document_changed_during_scan');
+                }
+
                 return AdmissionDocumentScanResult::clean();
             }
             if ($scanResult['exit_code'] === 1) {
@@ -133,5 +171,21 @@ final class ClamAvAdmissionDocumentScanner implements AdmissionDocumentScanner
         }
 
         return null;
+    }
+
+    private function matchesSource(string $absolutePath, int $expectedSize, string $expectedHash): bool
+    {
+        if (! is_file($absolutePath) || ! is_readable($absolutePath)) {
+            return false;
+        }
+
+        try {
+            $size = @filesize($absolutePath);
+            $hash = @hash_file('sha256', $absolutePath);
+        } catch (Throwable) {
+            return false;
+        }
+
+        return is_int($size) && $size === $expectedSize && is_string($hash) && hash_equals($expectedHash, $hash);
     }
 }

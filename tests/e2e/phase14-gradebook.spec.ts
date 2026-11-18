@@ -12,6 +12,47 @@ async function signIn(page: Page, email?: string, password?: string): Promise<vo
     await expect(page).toHaveURL(/\/(workspaces|t\/[^/]+\/dashboard)$/);
 }
 
+async function verifySixThemeScreen(page: Page, screen: string, evidenceDirectory: string): Promise<void> {
+    const themes = [
+        'executive-navy',
+        'academic-emerald',
+        'modern-indigo',
+        'warm-ivory',
+        'graphite-dark',
+        'midnight-violet',
+    ];
+    const desktopViewport = page.viewportSize() ?? { width: 1280, height: 800 };
+
+    for (const theme of themes) {
+        await page.getByLabel('Choose theme').selectOption(theme);
+        await expect(page.locator('[data-theme]')).toHaveAttribute('data-theme', theme);
+        const audit = await new AxeBuilder({ page })
+            .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+            .analyze();
+        expect(audit.violations, `${screen} / ${theme} axe violations`).toEqual([]);
+        await page.screenshot({
+            path: resolve(evidenceDirectory, `${screen}-${theme}.png`),
+            fullPage: true,
+        });
+
+        await page.setViewportSize({ width: 390, height: 844 });
+        expect(
+            await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+            `${screen} / ${theme} mobile horizontal overflow`,
+        ).toBe(true);
+        await page.setViewportSize(desktopViewport);
+
+        await page.getByRole('link', { name: 'Skip to content' }).focus();
+        await page.keyboard.press('Tab');
+        expect(
+            await page.evaluate(() => document.activeElement !== document.body),
+            `${screen} / ${theme} keyboard focus`,
+        ).toBe(true);
+        await page.reload();
+        await expect(page.locator('[data-theme]')).toHaveAttribute('data-theme', theme);
+    }
+}
+
 test('Phase 14 grade policy, assessment, independent review and released result work end to end', async ({
     browser,
 }) => {
@@ -33,6 +74,9 @@ test('Phase 14 grade policy, assessment, independent review and released result 
     );
     await instructor.goto(root);
     await expect(instructor.getByRole('heading', { name: 'Gradebooks', exact: true })).toBeVisible();
+    const evidenceDirectory = resolve(process.cwd(), 'test-results', 'phase14-screen-theme-evidence');
+    mkdirSync(evidenceDirectory, { recursive: true });
+    await verifySixThemeScreen(instructor, 'gradebook-directory', evidenceDirectory);
 
     const policyName = `E2E Phase 14 ${process.env.E2E_RUN_ID}`;
     await instructor.getByLabel('Policy name').fill(policyName);
@@ -92,8 +136,6 @@ test('Phase 14 grade policy, assessment, independent review and released result 
         'graphite-dark',
         'midnight-violet',
     ];
-    const evidenceDirectory = resolve(process.cwd(), 'test-results', 'phase14-gradebook-theme-evidence');
-    mkdirSync(evidenceDirectory, { recursive: true });
     for (const theme of themes) {
         await instructor.getByLabel('Choose theme').selectOption(theme);
         await expect(instructor.locator('[data-theme]')).toHaveAttribute('data-theme', theme);
@@ -138,6 +180,7 @@ test('Phase 14 grade policy, assessment, independent review and released result 
     const commentsRoot = `/t/${tenant}/academics/report-card-comments`;
     await instructor.goto(commentsRoot);
     await expect(instructor.getByRole('heading', { name: 'Report-card comments' })).toBeVisible();
+    await verifySixThemeScreen(instructor, 'teacher-report-card-comments', evidenceDirectory);
     const commentAssignment = instructor.getByRole('combobox', { name: 'Assigned learner and section' });
     const commentOption = commentAssignment.locator('option').filter({ hasText: 'Phase 08 Learner' });
     await expect(commentOption).toHaveCount(1);
@@ -151,6 +194,8 @@ test('Phase 14 grade policy, assessment, independent review and released result 
     await expect(reviewer.getByText(reportCardComment)).toBeVisible();
     await reviewer.getByRole('button', { name: 'Approve' }).first().click();
     await instructor.goto(recordsRoot);
+    await expect(instructor.getByRole('heading', { name: 'Official academic records' })).toBeVisible();
+    await verifySixThemeScreen(instructor, 'registrar-official-records', evidenceDirectory);
     const reportCardTemplateName = `E2E report card ${process.env.E2E_RUN_ID}`;
     await instructor.getByLabel('Template name').fill(reportCardTemplateName);
     await instructor.getByLabel('Template key').fill(`E2E-REPORT-CARD-${process.env.E2E_RUN_ID}`);
@@ -262,6 +307,12 @@ test('Phase 14 grade policy, assessment, independent review and released result 
             fullPage: true,
         });
     }
+    await instructor.goto(`/t/${tenant}/academics/audit`);
+    await expect(instructor.getByRole('heading', { name: 'Academic history' })).toBeVisible();
+    await verifySixThemeScreen(instructor, 'registrar-academic-history', evidenceDirectory);
+    await instructor.goto(`/t/${tenant}/academics`);
+    await expect(instructor.getByRole('heading', { name: 'Academic administration' })).toBeVisible();
+    await verifySixThemeScreen(instructor, 'academic-administration', evidenceDirectory);
     await instructor.goto(`/t/${tenant}/academics/gpa`);
     await expect(instructor.getByRole('heading', { name: 'GPA and academic standing' })).toBeVisible();
     const gpaPolicyName = `E2E GPA ${process.env.E2E_RUN_ID}`;
@@ -297,6 +348,7 @@ test('Phase 14 grade policy, assessment, independent review and released result 
     await expect(student.getByRole('heading', { name: 'My grades' })).toBeVisible();
     await expect(student.getByLabel('Official published results')).toContainText('Pass');
     await expect(student.getByLabel('Published grades')).toContainText(policyName);
+    await verifySixThemeScreen(student, 'student-published-grades', evidenceDirectory);
     await student.goto(`/t/${tenant}/academic-records/my-progress`);
     await expect(student.getByRole('heading', { name: 'My academic progress' })).toBeVisible();
     await expect(student.getByLabel('Academic progress empty state')).toBeVisible();

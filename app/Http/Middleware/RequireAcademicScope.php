@@ -31,6 +31,7 @@ final class RequireAcademicScope
         'tenant.academics.qualifications.',
         'tenant.academics.records.',
         'tenant.academics.reporting.',
+        'tenant.academics.analytics.',
     ];
 
     public function __construct(private readonly TenantContext $context) {}

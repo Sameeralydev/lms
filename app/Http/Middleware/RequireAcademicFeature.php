@@ -43,6 +43,7 @@ final class RequireAcademicFeature
         'tenant.academics.gpa.' => 'catalog',
         'tenant.academics.records.' => 'catalog',
         'tenant.academics.reporting.' => 'catalog',
+        'tenant.academics.analytics.' => 'catalog',
     ];
 
     public function __construct(private readonly TenantContext $context) {}

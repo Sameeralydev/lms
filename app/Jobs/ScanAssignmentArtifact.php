@@ -3,10 +3,12 @@
 namespace App\Jobs;
 
 use App\Domain\Admissions\Documents\AdmissionDocumentScanner;
+use App\Domain\Admissions\Documents\AdmissionDocumentScanning;
 use App\Domain\Audit\AuditRecorder;
 use App\Domain\Tenancy\TenantContext;
 use App\Models\AssignmentArtifact;
 use App\Models\Tenant;
+use App\Support\PrivateFileFingerprint;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -51,13 +53,18 @@ final class ScanAssignmentArtifact implements ShouldQueue
                 return;
             }
             $absolutePath = Storage::disk('local')->path($artifact->private_path);
-            $actualHash = hash_file('sha256', $absolutePath);
-            if (! is_string($actualHash) || ! hash_equals($artifact->sha256, $actualHash)) {
+            $actualHash = PrivateFileFingerprint::sha256($absolutePath);
+            if ($actualHash === null) {
+                $this->complete($artifact, 'unavailable', 'file_unavailable', $scanner->name(), $audit);
+
+                return;
+            }
+            if (! hash_equals($artifact->sha256, $actualHash)) {
                 $this->complete($artifact, 'rejected', 'content_hash_mismatch', $scanner->name(), $audit);
 
                 return;
             }
-            $result = $scanner->scan($absolutePath);
+            $result = AdmissionDocumentScanning::scan($scanner, $absolutePath, (string) $artifact->sha256);
             $this->complete($artifact, $result->status === 'rejected' ? 'infected' : $result->status, $result->code, $scanner->name(), $audit);
         } finally {
             $context->clear();

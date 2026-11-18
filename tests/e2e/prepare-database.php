@@ -171,6 +171,10 @@ try {
     $registrationInstructorPassword = Str::random(40);
     $registrationInstructor = User::query()->create(['name' => 'Phase 08 E2E Instructor', 'email' => $registrationInstructorEmail, 'password' => Hash::make($registrationInstructorPassword)]);
     $registrationInstructor->forceFill(['email_verified_at' => now()])->save();
+    $examinerEmail = 'phase15-e2e-examiner-'.$runId.'@example.test';
+    $examinerPassword = Str::random(40);
+    $examiner = User::query()->create(['name' => 'Phase 15 E2E Examiner', 'email' => $examinerEmail, 'password' => Hash::make($examinerPassword)]);
+    $examiner->forceFill(['email_verified_at' => now()])->save();
     $unassignedInstructorEmail = 'phase08-e2e-unassigned-instructor-'.$runId.'@example.test';
     $unassignedInstructorPassword = Str::random(40);
     $unassignedInstructor = User::query()->create(['name' => 'Phase 08 E2E Unassigned Instructor', 'email' => $unassignedInstructorEmail, 'password' => Hash::make($unassignedInstructorPassword)]);
@@ -251,6 +255,9 @@ try {
         $controllerMembership = TenantMembership::query()->create(['institution_id' => $institution->getKey(), 'user_id' => $examinationController->getKey(), 'status' => 'active', 'activated_at' => now()]);
         $controllerRole = Role::query()->where('tenant_id', $registrationTenant->getKey())->where('key', 'exam.controller')->firstOrFail();
         $controllerMembership->roles()->attach($controllerRole->getKey(), ['assigned_by' => $registrationCreator->getKey(), 'tenant_id' => $registrationTenant->getKey()]);
+        $examinerMembership = TenantMembership::query()->create(['institution_id' => $institution->getKey(), 'user_id' => $examiner->getKey(), 'status' => 'active', 'activated_at' => now()]);
+        $examinerRole = Role::query()->where('tenant_id', $registrationTenant->getKey())->where('key', 'examiner')->firstOrFail();
+        $examinerMembership->roles()->attach($examinerRole->getKey(), ['assigned_by' => $registrationCreator->getKey(), 'tenant_id' => $registrationTenant->getKey()]);
         $invigilatorMembership = TenantMembership::query()->create(['institution_id' => $institution->getKey(), 'user_id' => $examinationInvigilator->getKey(), 'status' => 'active', 'activated_at' => now()]);
         $examinationInvigilatorRole = Role::query()->where('tenant_id', $registrationTenant->getKey())->where('key', 'exam.invigilator')->firstOrFail();
         $invigilatorMembership->roles()->attach($examinationInvigilatorRole->getKey(), ['assigned_by' => $registrationCreator->getKey(), 'tenant_id' => $registrationTenant->getKey()]);
@@ -523,6 +530,8 @@ try {
         'schedulingReviewerPassword' => $schedulingReviewerPassword,
         'examinationControllerEmail' => $examinationControllerEmail,
         'examinationControllerPassword' => $examinationControllerPassword,
+        'examinerEmail' => $examinerEmail,
+        'examinerPassword' => $examinerPassword,
         'examinationInvigilatorEmail' => $examinationInvigilatorEmail,
         'examinationInvigilatorPassword' => $examinationInvigilatorPassword,
         'registrationInstructorEmail' => $registrationInstructorEmail,
