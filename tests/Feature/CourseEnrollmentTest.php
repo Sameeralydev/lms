@@ -147,6 +147,157 @@ class CourseEnrollmentTest extends TestCase
         Notification::assertSentOnDemand(EnrollmentWaitlistNotification::class);
     }
 
+    public function test_authorized_enrollment_reassessment_is_idempotent_and_preserves_issued_invoice_history(): void
+    {
+        [$tenant, $owner, $studentUser, $secondStudentUser, $period, $course] = $this->fixture();
+        $base = "/t/{$tenant->slug}";
+        $this->actingAs($owner)->post("{$base}/billing/fee-heads", ['code' => 'REASSESS', 'name' => 'Reassessment fee', 'category' => 'tuition'])->assertSessionHasNoErrors();
+        $headId = (int) \DB::table('billing_fee_heads')->where('tenant_id', $tenant->getKey())->value('id');
+        foreach ([['OLD-REASSESS', 'Original fee', '80.00'], ['NEW-REASSESS', 'Updated fee', '120.00']] as [$code, $name, $amount]) {
+            $this->actingAs($owner)->post("{$base}/billing/structures", ['code' => $code, 'name' => $name, 'currency' => 'USD', 'frequency' => 'one_time', 'effective_from' => today()->subYear()->toDateString(),
+                'items' => [['fee_head_id' => $headId, 'unit_amount' => $amount, 'quantity' => '1']]])->assertSessionHasNoErrors();
+        }
+        $structures = \DB::table('billing_fee_structures')->where('tenant_id', $tenant->getKey())->orderBy('id')->pluck('id')->all();
+        [$oldStructureId, $newStructureId] = array_map('intval', $structures);
+        foreach ([$oldStructureId, $newStructureId] as $structureId) {
+            $this->actingAs($owner)->post("{$base}/billing/structures/{$structureId}/activate")->assertSessionHasNoErrors();
+        }
+        $this->actingAs($owner)->put("{$base}/billing/enrollment-assessment", ['fee_structure_id' => $oldStructureId])->assertSessionHasNoErrors();
+        $this->actingAs($owner)->post("{$base}/registrar/enrollment/policies", ['name' => 'Reassessment policy', 'minimum_courses' => 0, 'maximum_courses' => 2, 'maximum_credits' => '', 'requires_approval' => false, 'waitlist_enabled' => false, 'waitlist_offer_hours' => 24])->assertRedirect();
+        $policyId = (int) \DB::table('enrollment_policies')->where('tenant_id', $tenant->getKey())->value('id');
+        $this->actingAs($owner)->post("{$base}/registrar/enrollment/offerings", ['offering_code' => 'REASSESS-OFFER', 'academic_year_id' => $period->academic_year_id,
+            'academic_period_id' => $period->getKey(), 'academic_course_id' => $course->getKey(), 'policy_id' => $policyId, 'delivery_mode' => 'in_person'])->assertRedirect();
+        $offeringId = (int) \DB::table('course_offerings')->where('tenant_id', $tenant->getKey())->value('id');
+        $this->actingAs($owner)->post("{$base}/registrar/enrollment/offerings/{$offeringId}/sections", ['section_code' => 'A', 'capacity' => 3, 'reserved_seats' => 0])->assertRedirect();
+        $sectionId = (int) \DB::table('course_sections')->where('tenant_id', $tenant->getKey())->value('id');
+        $this->actingAs($owner)->patch("{$base}/registrar/enrollment/offerings/{$offeringId}/status", ['status' => 'open'])->assertRedirect();
+        $this->actingAs($studentUser)->post("{$base}/registration", ['section_id' => $sectionId, 'idempotency_key' => (string) Str::uuid()])->assertRedirect();
+        $this->actingAs($secondStudentUser)->post("{$base}/registration", ['section_id' => $sectionId, 'idempotency_key' => (string) Str::uuid()])->assertRedirect();
+        $studentId = (int) \DB::table('sis_students')->where('tenant_id', $tenant->getKey())->where('user_id', $studentUser->getKey())->value('id');
+        $secondStudentId = (int) \DB::table('sis_students')->where('tenant_id', $tenant->getKey())->where('user_id', $secondStudentUser->getKey())->value('id');
+        $enrollmentId = (int) \DB::table('course_enrollments')->where('tenant_id', $tenant->getKey())->where('student_id', $studentId)->value('id');
+        $secondEnrollmentId = (int) \DB::table('course_enrollments')->where('tenant_id', $tenant->getKey())->where('student_id', $secondStudentId)->value('id');
+        $assignment = \DB::table('billing_fee_assignments')->where('tenant_id', $tenant->getKey())->where('course_enrollment_id', $enrollmentId)->first();
+        $assignmentId = (int) $assignment->id;
+        $secondAssignmentId = (int) \DB::table('billing_fee_assignments')->where('tenant_id', $tenant->getKey())->where('course_enrollment_id', $secondEnrollmentId)->value('id');
+        $originalAssignmentSnapshot = (array) $assignment;
+        $periodStart = Carbon::parse($assignment->period_start)->toDateString();
+        $periodEnd = Carbon::parse($assignment->period_end)->toDateString();
+        self::assertSame(today()->toDateString(), $periodStart);
+        $this->actingAs($owner)->post("{$base}/billing/invoices", ['student_id' => $studentId, 'fee_structure_id' => $oldStructureId, 'fee_assignment_id' => $assignmentId,
+            'period_start' => $periodStart, 'period_end' => $periodEnd, 'due_on' => $periodStart, 'idempotency_key' => 'reassess-invoice-'.Str::uuid()])->assertRedirect()->assertSessionHasNoErrors();
+        $invoice = \DB::table('billing_invoices')->where('tenant_id', $tenant->getKey())->where('fee_assignment_id', $assignmentId)->first();
+        self::assertNotNull($invoice);
+        $paymentBase = "{$base}/billing/payments";
+        $this->actingAs($owner)->post($paymentBase, ['student_id' => $studentId, 'method' => 'cash', 'amount' => '30.00', 'currency' => 'USD',
+            'reference' => 'REASSESS-PARTIAL', 'idempotency_key' => 'reassess-payment-'.Str::uuid(), 'allocations' => [['invoice_id' => (int) $invoice->id, 'amount' => '30.00']]])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $partiallyPaidInvoice = \DB::table('billing_invoices')->where('id', $invoice->id)->first(['paid_amount', 'outstanding_amount', 'status']);
+        self::assertSame('partially_paid', $partiallyPaidInvoice->status);
+        self::assertSame('30.00', number_format((float) $partiallyPaidInvoice->paid_amount, 2, '.', ''));
+        self::assertSame('50.00', number_format((float) $partiallyPaidInvoice->outstanding_amount, 2, '.', ''));
+        $this->actingAs($owner)->post($paymentBase, ['student_id' => $studentId, 'method' => 'cash', 'amount' => '50.00', 'currency' => 'USD',
+            'reference' => 'REASSESS-SETTLEMENT', 'idempotency_key' => 'reassess-settlement-'.Str::uuid(), 'allocations' => [['invoice_id' => (int) $invoice->id, 'amount' => '50.00']]])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $invoiceSnapshot = \DB::table('billing_invoices')->where('id', $invoice->id)->first(['subtotal', 'total', 'outstanding_amount', 'paid_amount', 'status']);
+        $invoiceSnapshot = array_values((array) $invoiceSnapshot);
+        $invoiceItemsSnapshot = \DB::table('billing_invoice_items')->where('invoice_id', $invoice->id)->orderBy('id')->get()->map(static fn ($row): array => (array) $row)->all();
+        $paymentAllocationsSnapshot = \DB::table('billing_payment_allocations')->where('invoice_id', $invoice->id)->orderBy('id')->get()->map(static fn ($row): array => (array) $row)->all();
+
+        // A future-dated placement moves the learner into a more-specific
+        // course/class/section fee rule. Reassessment must evaluate that new scope.
+        $transitionDate = today()->addDay()->toDateString();
+        $institutionId = (int) \DB::table('institutions')->where('tenant_id', $tenant->getKey())->value('id');
+        $unrelatedUser = User::factory()->create();
+        $unrelatedStudentId = \DB::table('sis_students')->insertGetId(['tenant_id' => $tenant->getKey(), 'institution_id' => $institutionId, 'user_id' => $unrelatedUser->getKey(),
+            'student_number' => 'UNRELATED-'.Str::upper(Str::random(6)), 'registration_reference' => 'UNRELATED-'.Str::upper(Str::random(6)),
+            'legal_first_name' => 'Unaffected', 'legal_last_name' => 'Learner', 'admission_date' => today()->toDateString(), 'status' => 'active',
+            'student_type' => 'standard', 'created_at' => now(), 'updated_at' => now()]);
+        $classId = \DB::table('academic_classes')->insertGetId(['tenant_id' => $tenant->getKey(), 'institution_id' => $institutionId,
+            'academic_year_id' => $period->academic_year_id, 'group_type' => 'cohort', 'code' => 'REASSESS-'.Str::upper(Str::random(5)),
+            'name' => 'Reassessment cohort', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        $sectionId = \DB::table('academic_sections')->insertGetId(['tenant_id' => $tenant->getKey(), 'academic_class_id' => $classId,
+            'code' => 'REASSESS-A', 'name' => 'Reassessment section', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        foreach ([$studentId, $secondStudentId] as $placedStudentId) {
+            \DB::table('sis_student_placements')->insert(['tenant_id' => $tenant->getKey(), 'student_id' => $placedStudentId, 'institution_id' => $institutionId,
+                'academic_year_id' => $period->academic_year_id, 'academic_period_id' => $period->getKey(), 'academic_class_id' => $classId,
+                'academic_section_id' => $sectionId, 'placement_type' => 'placement', 'status' => 'active', 'effective_from' => $transitionDate,
+                'created_at' => now(), 'updated_at' => now()]);
+        }
+        $this->actingAs($owner)->post("{$base}/billing/fee-applicability", ['fee_structure_id' => $newStructureId, 'campus_id' => '',
+            'academic_program_id' => '', 'academic_period_id' => $period->getKey(), 'academic_course_id' => $course->getKey(),
+            'academic_class_id' => $classId, 'academic_section_id' => $sectionId, 'effective_from' => $transitionDate, 'effective_until' => ''])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $newRuleId = (int) \DB::table('billing_fee_applicability_rules')->where('tenant_id', $tenant->getKey())->where('academic_section_id', $sectionId)->value('id');
+        $this->actingAs($owner)->patch("{$base}/billing/fee-applicability/{$newRuleId}/status", ['status' => 'active'])->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->travelTo(Carbon::parse($transitionDate)->startOfDay());
+        $beforeBilledReassessment = \DB::table('billing_fee_assignments')->where('course_enrollment_id', $enrollmentId)->count();
+        $this->actingAs($owner)->post("{$base}/billing/enrollment-assessment/{$enrollmentId}/reassess", ['reason' => 'Academic placement and fee rule changed'])
+            ->assertSessionHasNoErrors()->assertSessionHas('billingReassessmentResult', static fn (array $result): bool => $result['outcome'] === 'financial_review_required'
+                && $result['issued_obligation_preserved'] === true && $result['assignment_id'] === null);
+        self::assertSame($beforeBilledReassessment, \DB::table('billing_fee_assignments')->where('course_enrollment_id', $enrollmentId)->count(),
+            'An existing paid obligation requires finance review before a second billable assignment is created.');
+        $beforeUnauthorized = \DB::table('billing_fee_assignments')->where('course_enrollment_id', $enrollmentId)->count();
+        $this->actingAs($studentUser)->post("{$base}/billing/enrollment-assessment/{$enrollmentId}/reassess", ['reason' => 'Unauthorized request'])->assertForbidden();
+        self::assertSame($beforeUnauthorized, \DB::table('billing_fee_assignments')->where('course_enrollment_id', $enrollmentId)->count());
+        self::assertSame(1, \DB::table('audit_events')->where('tenant_id', $tenant->getKey())->where('event_type', 'billing.enrollment_assessment.reassessed')->count(), 'Denied callers do not create reassessment audit events.');
+        $this->actingAs($owner)->post("{$base}/billing/enrollment-assessment/{$secondEnrollmentId}/reassess", ['reason' => 'Unbilled learner eligibility changed'])->assertSessionHasNoErrors();
+        $this->actingAs($owner)->post("{$base}/billing/enrollment-assessment/{$secondEnrollmentId}/reassess", ['reason' => 'Repeat the same eligibility review'])->assertSessionHasNoErrors();
+
+        self::assertSame(1, \DB::table('billing_fee_assignments')->where('tenant_id', $tenant->getKey())->where('course_enrollment_id', $enrollmentId)->count());
+        self::assertSame(2, \DB::table('billing_fee_assignments')->where('tenant_id', $tenant->getKey())->where('course_enrollment_id', $secondEnrollmentId)->count());
+        self::assertSame(3, \DB::table('billing_fee_assignments')->where('tenant_id', $tenant->getKey())->count());
+        $reassessedAssignment = \DB::table('billing_fee_assignments')->where('course_enrollment_id', $secondEnrollmentId)->where('id', '<>', $secondAssignmentId)->first();
+        self::assertSame($newRuleId, (int) $reassessedAssignment->applicability_rule_id);
+        $contextSnapshot = json_decode((string) $reassessedAssignment->context_snapshot, true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame($course->getKey(), (int) $contextSnapshot['academic_course_id']);
+        self::assertSame($classId, (int) $contextSnapshot['academic_class_id']);
+        self::assertSame($sectionId, (int) $contextSnapshot['academic_section_id']);
+        self::assertSame($invoiceSnapshot, array_values((array) \DB::table('billing_invoices')->where('id', $invoice->id)->first(['subtotal', 'total', 'outstanding_amount', 'paid_amount', 'status'])));
+        self::assertSame($invoiceItemsSnapshot, \DB::table('billing_invoice_items')->where('invoice_id', $invoice->id)->orderBy('id')->get()->map(static fn ($row): array => (array) $row)->all());
+        self::assertSame($paymentAllocationsSnapshot, \DB::table('billing_payment_allocations')->where('invoice_id', $invoice->id)->orderBy('id')->get()->map(static fn ($row): array => (array) $row)->all());
+        self::assertSame(1, \DB::table('billing_invoices')->where('tenant_id', $tenant->getKey())->count(), 'Reassessment does not issue a duplicate invoice.');
+        self::assertSame(2, \DB::table('billing_payments')->where('tenant_id', $tenant->getKey())->count());
+        self::assertSame(2, \DB::table('billing_payment_allocations')->where('invoice_id', $invoice->id)->count());
+        self::assertSame('paid', \DB::table('billing_invoices')->where('id', $invoice->id)->value('status'));
+        self::assertSame(3, \DB::table('audit_events')->where('tenant_id', $tenant->getKey())->where('event_type', 'billing.enrollment_assessment.reassessed')->count());
+        self::assertDatabaseHas('audit_events', ['tenant_id' => $tenant->getKey(), 'event_type' => 'billing.enrollment_assessment.reassessed', 'subject_id' => (string) $enrollmentId]);
+        $reviewEvent = \DB::table('audit_events')->where('tenant_id', $tenant->getKey())->where('event_type', 'billing.enrollment_assessment.reassessed')
+            ->where('subject_id', (string) $enrollmentId)->firstOrFail(['metadata']);
+        $reviewMetadata = json_decode((string) $reviewEvent->metadata, true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame('financial_review_required', $reviewMetadata['outcome']);
+        self::assertTrue($reviewMetadata['requires_financial_review']);
+        $this->assertDatabaseHas('billing_fee_assignments', ['id' => $assignmentId, 'fee_structure_id' => $oldStructureId]);
+        self::assertSame($originalAssignmentSnapshot, (array) \DB::table('billing_fee_assignments')->where('id', $assignmentId)->first(), 'The original assignment snapshot is immutable after reassessment.');
+        self::assertSame(3, \DB::table('audit_events')->where('tenant_id', $tenant->getKey())->where('event_type', 'billing.enrollment_assessment.assigned')->count());
+        self::assertSame(0, \DB::table('billing_adjustments')->where('tenant_id', $tenant->getKey())->count(), 'Reassessment does not bypass the approved financial adjustment workflow.');
+        self::assertSame(0, \DB::table('billing_fee_assignments')->where('student_id', $unrelatedStudentId)->count(), 'Other learner assessment state remains untouched.');
+        self::assertSame(0, \DB::table('billing_invoices')->where('student_id', $unrelatedStudentId)->count(), 'Other learner financial state remains untouched.');
+
+        $foreignTenant = $this->basicTenant('Foreign Reassessment Academy');
+        $foreignOwnerId = (int) \DB::table('tenant_memberships')->where('tenant_id', $foreignTenant->getKey())->value('user_id');
+        $foreignOwner = User::query()->findOrFail($foreignOwnerId);
+        $protectedState = [
+            \DB::table('billing_fee_assignments')->where('course_enrollment_id', $enrollmentId)->orderBy('id')->pluck('id')->all(),
+            \DB::table('billing_invoices')->where('id', $invoice->id)->value('status'),
+            \DB::table('billing_payment_allocations')->where('invoice_id', $invoice->id)->count(),
+            \DB::table('audit_events')->where('tenant_id', $tenant->getKey())->count(),
+        ];
+        $this->actingAs($foreignOwner)->post("/t/{$foreignTenant->slug}/billing/enrollment-assessment/{$enrollmentId}/reassess", ['reason' => 'Attempt foreign enrollment access'])->assertNotFound();
+
+        $campusId = \DB::table('campuses')->insertGetId(['tenant_id' => $tenant->getKey(), 'institution_id' => $institutionId,
+            'code' => 'REASSESS-CAMPUS', 'name' => 'Reassessment Campus', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        \DB::table('tenant_memberships')->where('tenant_id', $tenant->getKey())->where('user_id', $owner->getKey())->update(['campus_id' => $campusId]);
+        $this->actingAs($owner)->post("{$base}/billing/enrollment-assessment/{$enrollmentId}/reassess", ['reason' => 'Attempt foreign campus access'])->assertNotFound();
+        self::assertSame($protectedState, [
+            \DB::table('billing_fee_assignments')->where('course_enrollment_id', $enrollmentId)->orderBy('id')->pluck('id')->all(),
+            \DB::table('billing_invoices')->where('id', $invoice->id)->value('status'),
+            \DB::table('billing_payment_allocations')->where('invoice_id', $invoice->id)->count(),
+            \DB::table('audit_events')->where('tenant_id', $tenant->getKey())->count(),
+        ], 'Cross-tenant and cross-campus denials do not mutate assignments, payments, or audit history.');
+    }
+
     public function test_student_cannot_register_using_another_tenants_section_or_access_another_students_enrollment(): void
     {
         [$tenant, $owner, $student, , $period, $course] = $this->fixture();

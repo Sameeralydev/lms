@@ -29,6 +29,9 @@ type FeeRule = {
     campus_id: number | null;
     academic_program_id: number | null;
     academic_period_id: number | null;
+    academic_course_id: number | null;
+    academic_class_id: number | null;
+    academic_section_id: number | null;
     effective_from: string;
     effective_until: string | null;
     status: string;
@@ -256,6 +259,7 @@ function InstallmentPlanCard({ plan, base }: { plan: InstallmentPlan; base: stri
 export default function BillingLifecycle({
     tenant,
     students,
+    confirmed_enrollments,
     campuses,
     structures,
     invoices,
@@ -263,6 +267,9 @@ export default function BillingLifecycle({
     fee_applicability_rules,
     academic_programs,
     academic_periods,
+    academic_courses,
+    academic_classes,
+    academic_sections,
     concessions,
     installment_plans,
     adjustments,
@@ -273,6 +280,7 @@ export default function BillingLifecycle({
 }: {
     tenant: { slug: string };
     students: Student[];
+    confirmed_enrollments: { id: number; student_number: string; academic_course_id: number }[];
     campuses: { id: number; name: string }[];
     structures: {
         id: number;
@@ -287,6 +295,9 @@ export default function BillingLifecycle({
     fee_applicability_rules: FeeRule[];
     academic_programs: { id: number; title: string; code: string }[];
     academic_periods: { id: number; name: string; code: string; starts_on: string; ends_on: string }[];
+    academic_courses: { id: number; title: string; code: string }[];
+    academic_classes: { id: number; name: string; code: string }[];
+    academic_sections: { id: number; academic_class_id: number; name: string }[];
     concessions: Concession[];
     installment_plans: InstallmentPlan[];
     adjustments: Adjustment[];
@@ -342,6 +353,11 @@ export default function BillingLifecycle({
                     fee_structure_id: number | null;
                     rule_id: number | null;
                 };
+                billingReassessmentResult?: {
+                    outcome: string;
+                    assignment_id: number | null;
+                    issued_obligation_preserved: boolean;
+                };
             };
         }
     ).flash;
@@ -359,6 +375,9 @@ export default function BillingLifecycle({
         campus_id: '',
         academic_program_id: '',
         academic_period_id: '',
+        academic_course_id: '',
+        academic_class_id: '',
+        academic_section_id: '',
         effective_from: '',
         effective_until: '',
     });
@@ -712,7 +731,7 @@ export default function BillingLifecycle({
                     )}
                 </section>
             )}
-            {permissions.recurring && (
+            {permissions.assign && (
                 <section className="bg-surface border-border mb-5 rounded-2xl border p-5">
                     <h2 className="text-text-primary text-lg font-semibold">Enrollment billing policy</h2>
                     <p className="text-text-secondary mt-1 text-sm">
@@ -749,6 +768,55 @@ export default function BillingLifecycle({
                             Save setting
                         </button>
                     </form>
+                    <h3 className="text-text-primary mt-4 font-semibold">Reassess confirmed enrollments</h3>
+                    <p className="text-text-secondary text-sm">
+                        Reassessment never edits or issues an invoice. If an invoice already exists, finance
+                        review is required before a new fee assignment can be created.
+                    </p>
+                    {flash?.billingReassessmentResult && (
+                        <p role="status" className="mt-2 text-sm">
+                            Result: {flash.billingReassessmentResult.outcome}. Existing issued obligation
+                            preserved:{' '}
+                            {flash.billingReassessmentResult.issued_obligation_preserved
+                                ? 'yes'
+                                : 'not found'}
+                            .
+                            {flash.billingReassessmentResult.outcome === 'financial_review_required' &&
+                                ' Review the existing obligation through the approved adjustment workflow before issuing any additional charge.'}
+                        </p>
+                    )}
+                    <ul className="divide-border mt-2 divide-y">
+                        {confirmed_enrollments.map((enrollment) => (
+                            <li
+                                key={enrollment.id}
+                                className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
+                            >
+                                <span>
+                                    {enrollment.student_number} · enrollment {enrollment.id}
+                                </span>
+                                <button
+                                    type="button"
+                                    className="border-border rounded border px-3 py-1"
+                                    onClick={() => {
+                                        if (
+                                            !window.confirm(
+                                                'Recheck fee eligibility for this enrollment? Existing invoices will not be changed.',
+                                            )
+                                        )
+                                            return;
+                                        const reason = window.prompt('Reason for reassessment');
+                                        if (reason && reason.trim().length >= 5)
+                                            router.post(
+                                                `${base}/enrollment-assessment/${enrollment.id}/reassess`,
+                                                { reason },
+                                            );
+                                    }}
+                                >
+                                    Reassess
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
                     <h2 className="text-text-primary text-lg font-semibold">Recurring billing plans</h2>
                     <p className="text-text-secondary mt-1 text-sm">
                         Plans are explicit per learner and use the structure’s monthly or annual frequency.
@@ -1023,6 +1091,60 @@ export default function BillingLifecycle({
                                         {row.name} ({row.starts_on}–{row.ends_on})
                                     </option>
                                 ))}
+                            </select>
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Course scope
+                            <select
+                                className={field}
+                                value={feeRule.data.academic_course_id}
+                                onChange={(e) => feeRule.setData('academic_course_id', e.target.value)}
+                            >
+                                <option value="">All courses</option>
+                                {academic_courses.map((row) => (
+                                    <option key={row.id} value={row.id}>
+                                        {row.title} ({row.code})
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Class scope
+                            <select
+                                className={field}
+                                value={feeRule.data.academic_class_id}
+                                onChange={(e) => {
+                                    feeRule.setData('academic_class_id', e.target.value);
+                                    feeRule.setData('academic_section_id', '');
+                                }}
+                            >
+                                <option value="">All classes</option>
+                                {academic_classes.map((row) => (
+                                    <option key={row.id} value={row.id}>
+                                        {row.name} ({row.code})
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Section scope
+                            <select
+                                className={field}
+                                value={feeRule.data.academic_section_id}
+                                onChange={(e) => feeRule.setData('academic_section_id', e.target.value)}
+                            >
+                                <option value="">All sections</option>
+                                {academic_sections
+                                    .filter(
+                                        (row) =>
+                                            feeRule.data.academic_class_id === '' ||
+                                            row.academic_class_id === Number(feeRule.data.academic_class_id),
+                                    )
+                                    .map((row) => (
+                                        <option key={row.id} value={row.id}>
+                                            {row.name}
+                                        </option>
+                                    ))}
                             </select>
                         </label>
                         <label className="text-text-secondary text-sm">

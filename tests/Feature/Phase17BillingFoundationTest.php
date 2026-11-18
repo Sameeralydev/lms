@@ -187,6 +187,58 @@ final class Phase17BillingFoundationTest extends TestCase
         $campusMembership = $this->member($tenant, $membership, $campusOperator, 'finance.manager');
         $campusMembership->forceFill(['campus_id' => $campus->getKey()])->save();
         $this->actingAs($campusOperator)->post("{$base}/fee-applicability", $ruleData)->assertNotFound();
+
+        $courseId = \DB::table('academic_courses')->insertGetId(['tenant_id' => $tenant->getKey(), 'institution_id' => $membership->institution_id,
+            'code' => 'APP-COURSE', 'title' => 'Applicable course', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        $classId = \DB::table('academic_classes')->insertGetId(['tenant_id' => $tenant->getKey(), 'institution_id' => $membership->institution_id,
+            'group_type' => 'cohort', 'code' => 'APP-CLASS', 'name' => 'Applicable class', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        $sectionId = \DB::table('academic_sections')->insertGetId(['tenant_id' => $tenant->getKey(), 'academic_class_id' => $classId,
+            'code' => 'APP-SECTION', 'name' => 'Applicable section', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        $specificData = [...$ruleData, 'academic_course_id' => $courseId, 'academic_class_id' => $classId, 'academic_section_id' => $sectionId];
+        $courseRuleData = [...$ruleData, 'academic_course_id' => $courseId];
+        $this->actingAs($owner)->post("{$base}/fee-applicability", $courseRuleData)->assertSessionHasNoErrors();
+        $courseRuleId = (int) \DB::table('billing_fee_applicability_rules')->where('tenant_id', $tenant->getKey())->where('academic_course_id', $courseId)->value('id');
+        $this->actingAs($owner)->patch("{$base}/fee-applicability/{$courseRuleId}/status", ['status' => 'active'])->assertSessionHasNoErrors();
+        $classRuleData = [...$courseRuleData, 'academic_class_id' => $classId];
+        $this->actingAs($owner)->post("{$base}/fee-applicability", $classRuleData)->assertSessionHasNoErrors();
+        $classRuleId = (int) \DB::table('billing_fee_applicability_rules')->where('tenant_id', $tenant->getKey())->where('academic_course_id', $courseId)->where('academic_class_id', $classId)->value('id');
+        $this->actingAs($owner)->patch("{$base}/fee-applicability/{$classRuleId}/status", ['status' => 'active'])->assertSessionHasNoErrors();
+        $this->actingAs($owner)->post("{$base}/fee-applicability", $specificData)->assertSessionHasNoErrors();
+        $specificRuleId = (int) \DB::table('billing_fee_applicability_rules')->where('tenant_id', $tenant->getKey())->where('academic_section_id', $sectionId)->value('id');
+        $this->actingAs($owner)->patch("{$base}/fee-applicability/{$specificRuleId}/status", ['status' => 'active'])->assertSessionHasNoErrors();
+        $campusRuleData = [...$ruleData, 'campus_id' => $campus->getKey()];
+        $this->actingAs($owner)->post("{$base}/fee-applicability", $campusRuleData)->assertSessionHasNoErrors();
+        $campusRuleId = (int) \DB::table('billing_fee_applicability_rules')->where('tenant_id', $tenant->getKey())->where('campus_id', $campus->getKey())->value('id');
+        $this->actingAs($owner)->patch("{$base}/fee-applicability/{$campusRuleId}/status", ['status' => 'active'])->assertSessionHasNoErrors();
+        $context->set($tenant, $membership);
+        try {
+            $specific = app(BillingFeeApplicability::class)->resolve((int) $membership->institution_id, null, null, null, '2026-06-01', $courseId, $classId, $sectionId);
+            self::assertFalse($specific['ambiguous']);
+            self::assertSame($specificRuleId, (int) $specific['rule']?->getKey());
+            $classScoped = app(BillingFeeApplicability::class)->resolve((int) $membership->institution_id, null, null, null, '2026-06-01', $courseId, $classId);
+            self::assertFalse($classScoped['ambiguous']);
+            self::assertSame($classRuleId, (int) $classScoped['rule']?->getKey());
+            $withoutSection = app(BillingFeeApplicability::class)->resolve((int) $membership->institution_id, null, null, null, '2026-06-01', $courseId, $classId);
+            self::assertFalse($withoutSection['ambiguous']);
+            self::assertSame($classRuleId, (int) $withoutSection['rule']?->getKey());
+            $courseScoped = app(BillingFeeApplicability::class)->resolve((int) $membership->institution_id, null, null, null, '2026-06-01', $courseId);
+            self::assertFalse($courseScoped['ambiguous']);
+            self::assertSame($courseRuleId, (int) $courseScoped['rule']?->getKey());
+            $general = app(BillingFeeApplicability::class)->resolve((int) $membership->institution_id, null, null, null, '2026-06-01');
+            self::assertFalse($general['ambiguous']);
+            self::assertSame($ruleId, (int) $general['rule']?->getKey());
+
+            $ambiguous = app(BillingFeeApplicability::class)->resolve((int) $membership->institution_id, (int) $campus->getKey(), null, null, '2026-06-01', $courseId);
+            self::assertTrue($ambiguous['ambiguous'], 'A campus-only and a course-only rule with equal specificity must not produce an arbitrary selection.');
+        } finally {
+            $context->clear();
+        }
+
+        $otherClassId = \DB::table('academic_classes')->insertGetId(['tenant_id' => $tenant->getKey(), 'institution_id' => $membership->institution_id,
+            'group_type' => 'cohort', 'code' => 'OTHER-CLASS', 'name' => 'Other class', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        $otherSectionId = \DB::table('academic_sections')->insertGetId(['tenant_id' => $tenant->getKey(), 'academic_class_id' => $otherClassId,
+            'code' => 'OTHER-SECTION', 'name' => 'Other section', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        $this->actingAs($owner)->post("{$base}/fee-applicability", [...$specificData, 'academic_section_id' => $otherSectionId])->assertNotFound();
     }
 
     public function test_proration_is_disabled_until_configured_and_uses_integer_calendar_day_rounding(): void

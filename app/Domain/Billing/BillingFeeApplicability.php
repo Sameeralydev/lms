@@ -4,8 +4,11 @@ namespace App\Domain\Billing;
 
 use App\Domain\Audit\AuditRecorder;
 use App\Domain\Tenancy\TenantContext;
+use App\Models\AcademicClass;
+use App\Models\AcademicCourse;
 use App\Models\AcademicPeriod;
 use App\Models\AcademicProgram;
+use App\Models\AcademicSection;
 use App\Models\BillingFeeApplicabilityRule;
 use App\Models\BillingFeeStructure;
 use App\Models\Campus;
@@ -21,9 +24,10 @@ final class BillingFeeApplicability
 {
     public function __construct(private readonly TenantContext $context, private readonly AuditRecorder $audit) {}
 
-    /** @param array{fee_structure_id:int,campus_id:int|null,academic_program_id:int|null,academic_period_id:int|null,effective_from:string,effective_until:string|null} $data */
+    /** @param array{fee_structure_id:int,campus_id:int|null,academic_program_id:int|null,academic_period_id:int|null,academic_course_id?:int|null,academic_class_id?:int|null,academic_section_id?:int|null,effective_from:string,effective_until:string|null} $data */
     public function createDraft(array $data, User $actor): BillingFeeApplicabilityRule
     {
+        $data += ['academic_course_id' => null, 'academic_class_id' => null, 'academic_section_id' => null];
         $membership = $this->manager();
 
         return DB::transaction(function () use ($data, $actor, $membership): BillingFeeApplicabilityRule {
@@ -38,9 +42,10 @@ final class BillingFeeApplicability
         }, 3);
     }
 
-    /** @param array{fee_structure_id:int,campus_id:int|null,academic_program_id:int|null,academic_period_id:int|null,effective_from:string,effective_until:string|null} $data */
+    /** @param array{fee_structure_id:int,campus_id:int|null,academic_program_id:int|null,academic_period_id:int|null,academic_course_id?:int|null,academic_class_id?:int|null,academic_section_id?:int|null,effective_from:string,effective_until:string|null} $data */
     public function updateDraft(int $id, array $data, User $actor): BillingFeeApplicabilityRule
     {
+        $data += ['academic_course_id' => null, 'academic_class_id' => null, 'academic_section_id' => null];
         $membership = $this->manager();
 
         return DB::transaction(function () use ($id, $data, $actor, $membership): BillingFeeApplicabilityRule {
@@ -84,7 +89,8 @@ final class BillingFeeApplicability
                 }
                 $conflict = BillingFeeApplicabilityRule::query()->where('tenant_id', $rule->tenant_id)->where('institution_id', $rule->institution_id)
                     ->where('status', 'active')->where('campus_id', $rule->campus_id)->where('academic_program_id', $rule->academic_program_id)
-                    ->where('academic_period_id', $rule->academic_period_id)->where('id', '<>', $rule->getKey())
+                    ->where('academic_period_id', $rule->academic_period_id)->where('academic_course_id', $rule->academic_course_id)
+                    ->where('academic_class_id', $rule->academic_class_id)->where('academic_section_id', $rule->academic_section_id)->where('id', '<>', $rule->getKey())
                     ->whereDate('effective_from', '<=', $rule->effective_until ?? '9999-12-31')
                     ->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', $rule->effective_from))->lockForUpdate()->exists();
                 if ($conflict) {
@@ -101,7 +107,7 @@ final class BillingFeeApplicability
     }
 
     /** @return array{rule:BillingFeeApplicabilityRule|null,ambiguous:bool} */
-    public function resolve(int $institutionId, ?int $campusId, ?int $programId, ?int $periodId, string $onDate): array
+    public function resolve(int $institutionId, ?int $campusId, ?int $programId, ?int $periodId, string $onDate, ?int $courseId = null, ?int $classId = null, ?int $sectionId = null): array
     {
         $date = Carbon::parse($onDate)->toDateString();
         $rules = BillingFeeApplicabilityRule::query()->where('tenant_id', $this->context->tenant()->getKey())
@@ -109,6 +115,9 @@ final class BillingFeeApplicability
             ->where(fn ($q) => $q->whereNull('campus_id')->orWhere('campus_id', $campusId))
             ->where(fn ($q) => $q->whereNull('academic_program_id')->orWhere('academic_program_id', $programId))
             ->where(fn ($q) => $q->whereNull('academic_period_id')->orWhere('academic_period_id', $periodId))
+            ->where(fn ($q) => $q->whereNull('academic_course_id')->orWhere('academic_course_id', $courseId))
+            ->where(fn ($q) => $q->whereNull('academic_class_id')->orWhere('academic_class_id', $classId))
+            ->where(fn ($q) => $q->whereNull('academic_section_id')->orWhere('academic_section_id', $sectionId))
             ->whereDate('effective_from', '<=', $date)->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', $date))
             ->with('feeStructure')->get()->filter(static function (BillingFeeApplicabilityRule $rule) use ($date): bool {
                 $structure = $rule->feeStructure;
@@ -117,12 +126,12 @@ final class BillingFeeApplicability
                     && Carbon::parse($structure->effective_from)->toDateString() <= $date
                     && ($structure->effective_until === null || Carbon::parse($structure->effective_until)->toDateString() >= $date);
             })->values();
-        $rules = $rules->sortByDesc(static fn (BillingFeeApplicabilityRule $rule): int => (int) ($rule->campus_id !== null) + (int) ($rule->academic_program_id !== null) + (int) ($rule->academic_period_id !== null))->values();
+        $rules = $rules->sortByDesc(static fn (BillingFeeApplicabilityRule $rule): int => (int) ($rule->campus_id !== null) + (int) ($rule->academic_program_id !== null) + (int) ($rule->academic_period_id !== null) + (int) ($rule->academic_course_id !== null) + (int) ($rule->academic_class_id !== null) + (int) ($rule->academic_section_id !== null))->values();
         if ($rules->isEmpty()) {
             return ['rule' => null, 'ambiguous' => false];
         }
-        $specificity = (int) ($rules[0]->campus_id !== null) + (int) ($rules[0]->academic_program_id !== null) + (int) ($rules[0]->academic_period_id !== null);
-        $best = $rules->filter(static fn (BillingFeeApplicabilityRule $rule): bool => ((int) ($rule->campus_id !== null) + (int) ($rule->academic_program_id !== null) + (int) ($rule->academic_period_id !== null)) === $specificity);
+        $specificity = (int) ($rules[0]->campus_id !== null) + (int) ($rules[0]->academic_program_id !== null) + (int) ($rules[0]->academic_period_id !== null) + (int) ($rules[0]->academic_course_id !== null) + (int) ($rules[0]->academic_class_id !== null) + (int) ($rules[0]->academic_section_id !== null);
+        $best = $rules->filter(static fn (BillingFeeApplicabilityRule $rule): bool => ((int) ($rule->campus_id !== null) + (int) ($rule->academic_program_id !== null) + (int) ($rule->academic_period_id !== null) + (int) ($rule->academic_course_id !== null) + (int) ($rule->academic_class_id !== null) + (int) ($rule->academic_section_id !== null)) === $specificity);
         if ($best->count() !== 1) {
             return ['rule' => null, 'ambiguous' => true];
         }
@@ -157,7 +166,7 @@ final class BillingFeeApplicability
         return $membership;
     }
 
-    /** @param array{fee_structure_id:int,campus_id:int|null,academic_program_id:int|null,academic_period_id:int|null,effective_from:string,effective_until:string|null} $data */
+    /** @param array{fee_structure_id:int,campus_id:int|null,academic_program_id:int|null,academic_period_id:int|null,academic_course_id:int|null,academic_class_id:int|null,academic_section_id:int|null,effective_from:string,effective_until:string|null} $data */
     private function validateReferences(array $data, TenantMembership $membership): void
     {
         $structure = BillingFeeStructure::query()->where('tenant_id', $membership->tenant_id)->findOrFail($data['fee_structure_id']);
@@ -174,6 +183,29 @@ final class BillingFeeApplicability
         }
         if ($data['academic_program_id'] !== null && ! AcademicProgram::query()->where('tenant_id', $membership->tenant_id)->where('institution_id', $membership->institution_id)->whereKey($data['academic_program_id'])->exists()) {
             abort(404);
+        }
+        if ($data['academic_course_id'] !== null && ! AcademicCourse::query()->where('tenant_id', $membership->tenant_id)->where('institution_id', $membership->institution_id)->whereKey($data['academic_course_id'])->exists()) {
+            abort(404);
+        }
+        $class = $data['academic_class_id'] === null ? null : AcademicClass::query()->where('tenant_id', $membership->tenant_id)->where('institution_id', $membership->institution_id)
+            ->when($membership->campus_id !== null, fn ($q) => $q->where(fn ($scope) => $scope->whereNull('campus_id')->orWhere('campus_id', $membership->campus_id)))
+            ->find($data['academic_class_id']);
+        if ($data['academic_class_id'] !== null && $class === null) {
+            abort(404);
+        }
+        if ($data['academic_section_id'] !== null && ($data['academic_class_id'] === null || ! AcademicSection::query()->where('tenant_id', $membership->tenant_id)
+            ->where('academic_class_id', $data['academic_class_id'])->whereKey($data['academic_section_id'])->exists())) {
+            abort(404);
+        }
+        if ($class !== null && (($data['campus_id'] !== null && $class->campus_id !== null && (int) $class->campus_id !== $data['campus_id'])
+            || ($data['academic_program_id'] !== null && $class->academic_program_id !== null && (int) $class->academic_program_id !== $data['academic_program_id']))) {
+            throw ValidationException::withMessages(['academic_class_id' => 'The class does not match the selected campus or program scope.']);
+        }
+        if ($data['academic_course_id'] !== null && $class !== null) {
+            $course = AcademicCourse::query()->where('tenant_id', $membership->tenant_id)->findOrFail($data['academic_course_id']);
+            if ($course->academic_level_id !== null && $class->academic_level_id !== null && (int) $course->academic_level_id !== (int) $class->academic_level_id) {
+                throw ValidationException::withMessages(['academic_course_id' => 'The course and class belong to different academic levels.']);
+            }
         }
         if ($data['academic_period_id'] !== null && ! AcademicPeriod::query()->where('tenant_id', $membership->tenant_id)->whereKey($data['academic_period_id'])
             ->whereIn('academic_year_id', fn ($q) => $q->select('id')->from('academic_years')->where('tenant_id', $membership->tenant_id)->where('institution_id', $membership->institution_id)

@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
-/** @property int $tenant_id @property int $institution_id @property int|null $campus_id @property int|null $academic_program_id @property int|null $academic_period_id @property int $fee_structure_id @property Carbon $effective_from @property Carbon|null $effective_until @property string $status */
+/** @property int $tenant_id @property int $institution_id @property int|null $campus_id @property int|null $academic_program_id @property int|null $academic_period_id @property int|null $academic_course_id @property int|null $academic_class_id @property int|null $academic_section_id @property int $fee_structure_id @property Carbon $effective_from @property Carbon|null $effective_until @property string $status */
 class BillingFeeApplicabilityRule extends AcademicRecord
 {
     protected function casts(): array
@@ -17,5 +17,23 @@ class BillingFeeApplicabilityRule extends AcademicRecord
     public function feeStructure(): BelongsTo
     {
         return $this->belongsTo(BillingFeeStructure::class, 'fee_structure_id');
+    }
+
+    /** @return BelongsTo<AcademicCourse, $this> */
+    public function course(): BelongsTo
+    {
+        return $this->belongsTo(AcademicCourse::class, 'academic_course_id');
+    }
+
+    /** @return BelongsTo<AcademicClass, $this> */
+    public function academicClass(): BelongsTo
+    {
+        return $this->belongsTo(AcademicClass::class, 'academic_class_id');
+    }
+
+    /** @return BelongsTo<AcademicSection, $this> */
+    public function academicSection(): BelongsTo
+    {
+        return $this->belongsTo(AcademicSection::class, 'academic_section_id');
     }
 }
