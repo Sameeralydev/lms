@@ -1,4 +1,4 @@
-﻿# Deferred product QA backlog
+# Deferred product QA backlog
 
 Items in this file are **QA PENDING** unless evidence is explicitly recorded after execution. Deferred items are reserved for final product-wide verification and do not represent passed checks.
 
@@ -50,3 +50,9 @@ Items in this file are **QA PENDING** unless evidence is explicitly recorded aft
 - **QA PENDING** — Verify recipient resolution, active membership, participant-only thread access, campus boundaries, unread state, and message/inbox transaction consistency under authenticated journeys.
 - **QA PENDING** — Verify read-receipt idempotency, inbox pagination, and announcement/message journeys across supported themes and responsive layouts.
 - **QA PENDING** — Verify scheduled publication command locking, retry/idempotency, audience selection, audit event creation, and due-time notification delivery on MySQL.
+
+## Phase 16 and Phase 19 additions
+
+- **QA PENDING** — Apply the two additive Nov 18 migrations only after confirming the authorized Developer B database server, port, schema and ownership; verify existing records and migration ordering before execution.
+- **QA PENDING** — Authenticated communication preference checks for each supported role, event-specific opt-out, message/announcement history retention, recipient tenant isolation, and immediate/scheduled dispatch idempotency.
+- **QA PENDING** — Staff attendance check-in/out and leave request/review/cancellation browser journeys, timezone/date-boundary behavior, tenant/campus authorization, duplicate clock operations, concurrent overlapping leave submissions, and audit attribution on a verified isolated MySQL database.

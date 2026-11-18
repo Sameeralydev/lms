@@ -47,6 +47,12 @@ Artisan::command('communications:publish-scheduled', function (AuditRecorder $au
                 $join->on('r.id', '=', 'mr.role_id')->on('r.tenant_id', '=', 'tm.tenant_id');
             })->where('tm.tenant_id', $announcement->tenant_id)->where('tm.status', 'active')->whereIn('r.key', $roleKeys)
                 ->when($announcement->campus_id !== null, fn ($query) => $query->where('tm.campus_id', $announcement->campus_id))
+                ->whereNotExists(function ($query) use ($announcement): void {
+                    $query->selectRaw('1')->from('communications_notification_preferences as pref')
+                        ->whereColumn('pref.tenant_id', 'tm.tenant_id')->whereColumn('pref.user_id', 'tm.user_id')
+                        ->where('pref.tenant_id', $announcement->tenant_id)->where('pref.event_type', 'announcement')
+                        ->where('pref.in_app_enabled', false);
+                })
                 ->distinct()->pluck('tm.user_id')->all();
             $rows = array_map(static fn (int $userId): array => [
                 'tenant_id' => $announcement->tenant_id, 'user_id' => $userId, 'type' => 'announcement',

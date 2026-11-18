@@ -1,4 +1,4 @@
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, useForm } from '@inertiajs/react';
 import { PageHeader } from '@/components/ui/page-header';
 import { WorkspaceLayout } from '@/layouts/workspace-layout';
 
@@ -7,14 +7,27 @@ type Props = {
     tenant: { slug: string };
     notifications: { data: Notice[]; current_page: number; last_page: number; total: number; links: { url: string | null; label: string; active: boolean }[] };
     unreadCount: number;
+    preferences: { announcement: boolean; message: boolean };
 };
 
-export default function Notifications({ tenant, notifications, unreadCount }: Props) {
+export default function Notifications({ tenant, notifications, unreadCount, preferences }: Props) {
     const base = `/t/${tenant.slug}/communications/notifications`;
+    const form = useForm({ announcement: preferences.announcement, message: preferences.message });
     return (
         <WorkspaceLayout title="Communication inbox" area="tenant">
             <Head title="Communication inbox" />
             <PageHeader eyebrow="Institution communications" title="Inbox" description={`${unreadCount} unread communication${unreadCount === 1 ? '' : 's'}.`} />
+            <form onSubmit={(event) => { event.preventDefault(); form.put(`${base}/preferences`, { preserveScroll: true }); }} className="border-border bg-surface mt-6 rounded-2xl border p-5">
+                <h2 className="font-semibold">In-app notification preferences</h2>
+                <p className="text-text-muted mt-1 text-sm">Choose which communication alerts appear in this inbox. Messages and announcements remain available in their respective areas.</p>
+                <div className="mt-4 flex flex-wrap gap-6">
+                    <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={form.data.announcement} onChange={(event) => form.setData('announcement', event.target.checked)} />Announcement alerts</label>
+                    <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={form.data.message} onChange={(event) => form.setData('message', event.target.checked)} />Message alerts</label>
+                </div>
+                <button disabled={form.processing} className="bg-brand-700 text-white mt-4 min-h-11 rounded-lg px-4 text-sm font-semibold disabled:opacity-50">{form.processing ? 'Saving…' : 'Save preferences'}</button>
+                {form.errors.announcement && <p role="alert" className="text-danger mt-2 text-sm">{form.errors.announcement}</p>}
+                {form.errors.message && <p role="alert" className="text-danger mt-2 text-sm">{form.errors.message}</p>}
+            </form>
             {notifications.data.length === 0 ? (
                 <section className="border-border bg-surface mt-6 rounded-2xl border p-8 text-center">
                     <h2 className="font-semibold">Your inbox is clear</h2>

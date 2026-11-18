@@ -6,6 +6,7 @@ use App\Domain\Audit\AuditRecorder;
 use App\Domain\Tenancy\TenantContext;
 use App\Models\Campus;
 use App\Models\CommunicationsAnnouncement;
+use App\Models\CommunicationsNotificationPreference;
 use App\Models\Tenant;
 use App\Models\TenantMembership;
 use Illuminate\Http\RedirectResponse;
@@ -254,6 +255,10 @@ final class CommunicationsAnnouncementController
             ->whereHas('roles', fn ($query) => $query->where('roles.tenant_id', $tenant->getKey())->whereIn('roles.key', $audienceRoles))
             ->when($campusId !== null, fn ($query) => $query->where('campus_id', $campusId))
             ->distinct()->pluck('user_id')->all();
+        $disabledUsers = CommunicationsNotificationPreference::query()->where('event_type', 'announcement')
+            ->where('tenant_id', $tenant->getKey())->where('in_app_enabled', false)->whereIn('user_id', $recipients)
+            ->pluck('user_id')->map(static fn ($id): int => (int) $id)->all();
+        $recipients = array_values(array_diff(array_map('intval', $recipients), $disabledUsers));
         $timestamp = now();
         $rows = array_map(static fn (int $userId): array => [
             'tenant_id' => $tenant->getKey(), 'user_id' => $userId, 'type' => 'announcement',

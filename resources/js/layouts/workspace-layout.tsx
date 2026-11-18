@@ -102,6 +102,7 @@ const tenantNavigation = [
     ['My attendance', 'attendance/my', 'attendance.student.view'],
     ['Family attendance', 'attendance/guardian', 'attendance.guardian.view'],
     ['Staff directory', 'hr/staff', 'hr.staff.view'],
+    ['HR attendance & leave', 'hr/operations', 'hr.staff.view-own'],
     ['Library', 'library', 'library.view'],
     ['Integrations', 'integrations', 'integrations.view'],
     ['Announcements', 'communications/announcements', 'communications.announcements.view'],
@@ -167,6 +168,10 @@ export function WorkspaceLayout({ children, title, area }: WorkspaceLayoutProps)
                           ? currentTenant?.permissions.some((key) =>
                                 ['library.view', 'library.member.view-own'].includes(key),
                             )
+                          : target === 'hr/operations'
+                            ? currentTenant?.permissions.some((key) =>
+                                  ['hr.staff.view-own', 'hr.attendance.manage', 'hr.leave.manage'].includes(key),
+                              )
                           : currentTenant?.permissions.includes(permission),
               );
     const urlFor = (target: string) =>

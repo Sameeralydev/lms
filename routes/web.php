@@ -57,6 +57,7 @@ use App\Http\Controllers\Workspace\ExaminationResultsController;
 use App\Http\Controllers\Workspace\ExaminationSeatingController;
 use App\Http\Controllers\Workspace\ExaminationStaffController;
 use App\Http\Controllers\Workspace\GradebookController;
+use App\Http\Controllers\Workspace\HrOperationsController;
 use App\Http\Controllers\Workspace\HrStaffController;
 use App\Http\Controllers\Workspace\InstitutionController;
 use App\Http\Controllers\Workspace\IntegrationController;
@@ -139,6 +140,16 @@ Route::middleware('auth')->group(function (): void {
             Route::get('/{staffId}', [HrStaffController::class, 'show'])->whereNumber('staffId')->name('show');
             Route::put('/{staffId}', [HrStaffController::class, 'update'])->middleware('tenant.permission:hr.staff.manage')->whereNumber('staffId')->name('update');
             Route::patch('/{staffId}/status', [HrStaffController::class, 'changeStatus'])->middleware('tenant.permission:hr.staff.status.manage')->whereNumber('staffId')->name('status');
+        });
+        Route::prefix('hr/operations')->name('hr.operations.')->group(function (): void {
+            Route::get('/', [HrOperationsController::class, 'index'])->name('index');
+            Route::post('/leave-types', [HrOperationsController::class, 'storeLeaveType'])->middleware('tenant.permission:hr.leave.manage')->name('leave-types.store');
+            Route::patch('/leave-types/{typeId}/status', [HrOperationsController::class, 'setLeaveTypeStatus'])->middleware('tenant.permission:hr.leave.manage')->whereNumber('typeId')->name('leave-types.status');
+            Route::post('/leave-requests', [HrOperationsController::class, 'requestLeave'])->name('leave-requests.store');
+            Route::patch('/leave-requests/{requestId}/decision', [HrOperationsController::class, 'decideLeave'])->middleware('tenant.permission:hr.leave.manage')->whereNumber('requestId')->name('leave-requests.decision');
+            Route::patch('/leave-requests/{requestId}/cancel', [HrOperationsController::class, 'cancelLeave'])->whereNumber('requestId')->name('leave-requests.cancel');
+            Route::post('/attendance/clock-in', [HrOperationsController::class, 'clockIn'])->name('attendance.clock-in');
+            Route::post('/attendance/clock-out', [HrOperationsController::class, 'clockOut'])->name('attendance.clock-out');
         });
         Route::prefix('library')->name('library.')->group(function (): void {
             Route::get('/', [LibraryController::class, 'index'])->name('index');
@@ -324,6 +335,7 @@ Route::middleware('auth')->group(function (): void {
         Route::prefix('communications/notifications')->name('communications.notifications.')->middleware('tenant.permission:communications.announcements.view')->group(function (): void {
             Route::get('/', [CommunicationsNotificationController::class, 'index'])->name('index');
             Route::post('/{notificationId}/read', [CommunicationsNotificationController::class, 'markRead'])->whereNumber('notificationId')->name('read');
+            Route::put('/preferences', [CommunicationsNotificationController::class, 'updatePreferences'])->middleware('tenant.permission:communications.preferences.manage-own')->name('preferences.update');
         });
         Route::prefix('attendance')->name('attendance.')->group(function (): void {
             Route::get('/', [AttendanceController::class, 'index'])->middleware('tenant.permission:attendance.view')->name('index');

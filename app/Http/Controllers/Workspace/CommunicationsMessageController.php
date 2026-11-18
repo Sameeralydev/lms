@@ -8,6 +8,7 @@ use App\Models\CommunicationsConversation;
 use App\Models\CommunicationsConversationMember;
 use App\Models\CommunicationsMessage;
 use App\Models\CommunicationsNotification;
+use App\Models\CommunicationsNotificationPreference;
 use App\Models\Tenant;
 use App\Models\TenantMembership;
 use Illuminate\Http\RedirectResponse;
@@ -120,11 +121,13 @@ final class CommunicationsMessageController
             CommunicationsConversationMember::query()->where('tenant_id', $tenant->getKey())
                 ->where('conversation_id', $conversation->getKey())->update(['updated_at' => now()]);
             $conversation->touch();
-            CommunicationsNotification::query()->create([
-                'user_id' => $recipient->user_id, 'type' => 'message', 'reference_id' => $message->getKey(), 'context_id' => $conversation->getKey(),
-                'title' => 'New message from '.$request->user()->name,
-                'summary' => mb_substr($validated['body'], 0, 500),
-            ]);
+            if (CommunicationsNotificationPreference::allows((int) $tenant->getKey(), (int) $recipient->user_id, 'message')) {
+                CommunicationsNotification::query()->create([
+                    'user_id' => $recipient->user_id, 'type' => 'message', 'reference_id' => $message->getKey(), 'context_id' => $conversation->getKey(),
+                    'title' => 'New message from '.$request->user()->name,
+                    'summary' => mb_substr($validated['body'], 0, 500),
+                ]);
+            }
             $audit->record('communications.message.sent', $request->user(), (int) $tenant->getKey(), $conversation, [
                 'conversation_id' => $conversation->getKey(), 'recipient_user_id' => $recipient->user_id,
             ]);
@@ -152,11 +155,13 @@ final class CommunicationsMessageController
             CommunicationsConversationMember::query()->where('tenant_id', $tenant->getKey())
                 ->where('conversation_id', $conversation->getKey())->update(['updated_at' => now()]);
             $conversation->touch();
-            CommunicationsNotification::query()->create([
-                'user_id' => $otherId, 'type' => 'message', 'reference_id' => $message->getKey(), 'context_id' => $conversation->getKey(),
-                'title' => 'New message from '.$request->user()->name,
-                'summary' => mb_substr($validated['body'], 0, 500),
-            ]);
+            if (CommunicationsNotificationPreference::allows((int) $tenant->getKey(), $otherId, 'message')) {
+                CommunicationsNotification::query()->create([
+                    'user_id' => $otherId, 'type' => 'message', 'reference_id' => $message->getKey(), 'context_id' => $conversation->getKey(),
+                    'title' => 'New message from '.$request->user()->name,
+                    'summary' => mb_substr($validated['body'], 0, 500),
+                ]);
+            }
             $audit->record('communications.message.sent', $request->user(), (int) $tenant->getKey(), $conversation, [
                 'conversation_id' => $conversation->getKey(), 'recipient_user_id' => $otherId,
             ]);
