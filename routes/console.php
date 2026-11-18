@@ -7,12 +7,12 @@ use App\Domain\Assessments\QuizAssessmentWorkflow;
 use App\Domain\Assessments\QuizOutboxProcessor;
 use App\Domain\Assignments\AssignmentOutboxProcessor;
 use App\Domain\Assignments\AssignmentWorkflow;
-use App\Domain\Billing\BillingRecurringProcessor;
 use App\Domain\Enrollment\CourseEnrollmentWorkflow;
 use App\Domain\Learning\CourseDeliveryActivityRetentionProcessor;
 use App\Domain\Learning\CourseDeliveryMediaRetentionProcessor;
 use App\Domain\Sis\SisPrivateDocumentRetentionProcessor;
 use App\Domain\Tenancy\TenantContext;
+use App\Jobs\ProcessBillingRecurringPlans;
 use App\Models\Tenant;
 use App\Models\TenantMembership;
 use App\Models\User;
@@ -236,11 +236,11 @@ Artisan::command('analytics:reports:dispatch', function (AcademicAnalyticsSchedu
 
 Schedule::command('analytics:reports:dispatch')->everyMinute()->withoutOverlapping();
 
-Artisan::command('billing:recurring:process', function (BillingRecurringProcessor $processor): int {
-    $result = $processor->processDue();
-    $this->info(sprintf('Recurring billing: completed=%d failed=%d', $result['processed'], $result['failed']));
+Artisan::command('billing:recurring:process', function (): int {
+    ProcessBillingRecurringPlans::dispatch();
+    $this->info('Recurring billing processing job queued.');
 
-    return $result['failed'] > 0 ? 1 : 0;
+    return 0;
 })->purpose('Generate invoices for explicitly configured, due recurring billing plans');
 
 Schedule::command('billing:recurring:process')->everyMinute()->withoutOverlapping();

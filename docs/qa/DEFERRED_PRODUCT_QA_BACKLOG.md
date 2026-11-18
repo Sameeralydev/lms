@@ -57,3 +57,13 @@ Focused Phase 18 SQLite result on 2026-11-18: 6 tests / 134 assertions passed. T
 - External email/SMS delivery remains unverified; implemented notifications use Laravel's database channel only.
 
 Fresh test evidence: Phase 17 SQLite 9/266, course enrollment 9/190, and Phase 18 SQLite compatibility 6/140 all passed. Focused PHPStan, Pint, PHP syntax, TypeScript, ESLint, Prettier, production build, billing route registration and `git diff --check` passed. These results do not close the remaining functional and environmental work in the Phase 17 traceability report.
+
+## Phase 17/18 latest focused verification (2026-11-18)
+
+- Phase 17 SQLite: 10 tests / 268 assertions — PASS.
+- Enrollment regression: 9 tests / 190 assertions — PASS.
+- Phase 18 SQLite: 7 tests / 207 assertions — PASS.
+- PHPStan/Pint/PHP syntax, TypeScript, ESLint, Prettier, Vite build, Composer validation/platform checks, billing route inventory and diff check — PASS.
+- MySQL, full browser/accessibility, hosted CI, external payments/bank import, and full product regression — NOT RUN.
+
+The ledger now includes current unapplied confirmed payment amounts as student credits; later allocation does not change the net statement. Payment reversals use independent request/review/execution and preserve source records. These latest results are focused development evidence only. They do not close implementation gaps listed in the phase traceability files.

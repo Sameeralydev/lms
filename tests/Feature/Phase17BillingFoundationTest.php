@@ -7,12 +7,15 @@ use App\Domain\Billing\BillingMoney;
 use App\Domain\Billing\BillingRecurringProcessor;
 use App\Domain\Tenancy\TenantContext;
 use App\Domain\Tenancy\TenantProvisioner;
+use App\Jobs\ProcessBillingRecurringPlans;
 use App\Models\BillingInvoice;
 use App\Models\Role;
 use App\Models\SisStudent;
 use App\Models\Tenant;
 use App\Models\TenantMembership;
 use App\Models\User;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Tests\Support\GuardedRefreshDatabase;
@@ -347,6 +350,14 @@ final class Phase17BillingFoundationTest extends TestCase
         self::assertSame('2026-11-01', substr((string) \DB::table('billing_recurring_plans')->where('tenant_id', $tenant->getKey())->value('period_start'), 0, 10));
         self::assertSame(['processed' => 0, 'failed' => 0], app(BillingRecurringProcessor::class)->processDue());
         self::assertSame(1, \DB::table('billing_invoices')->where('tenant_id', $tenant->getKey())->count());
+    }
+
+    public function test_recurring_billing_scheduler_queues_unique_processor_job(): void
+    {
+        Bus::fake();
+
+        self::assertSame(0, Artisan::call('billing:recurring:process'));
+        Bus::assertDispatched(ProcessBillingRecurringPlans::class);
     }
 
     /** @return array{Tenant, User, TenantMembership} */

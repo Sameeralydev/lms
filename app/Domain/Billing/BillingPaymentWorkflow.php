@@ -8,6 +8,7 @@ use App\Models\BillingInvoice;
 use App\Models\BillingPayment;
 use App\Models\BillingPaymentAllocation;
 use App\Models\BillingPaymentEvent;
+use App\Models\BillingPaymentReversal;
 use App\Models\SisStudent;
 use App\Models\SisStudentGuardian;
 use App\Models\TenantMembership;
@@ -177,6 +178,9 @@ final class BillingPaymentWorkflow
             if ($payment->status !== 'confirmed') {
                 throw new ConflictHttpException('Only confirmed payments can be allocated.');
             }
+            if ($this->hasActiveReversal((int) $payment->getKey())) {
+                throw new ConflictHttpException('Allocations are locked while a payment reversal is under review.');
+            }
             $allocatedBefore = $this->netAllocatedMinor($payment);
             $available = BillingMoney::toMinor((string) $payment->unapplied_amount);
             $refunded = 0;
@@ -198,6 +202,164 @@ final class BillingPaymentWorkflow
             ]);
 
             return $payment->load(['student', 'allocations.invoice']);
+        }, 3);
+    }
+
+    public function requestReversal(int $paymentId, string $reason, string $requestKey, User $actor): BillingPaymentReversal
+    {
+        $membership = $this->context->membership();
+        abort_unless($membership->hasPermission('billing.payments.reverse.request'), 403);
+        $this->assertRequestKey($requestKey);
+        if (trim($reason) === '') {
+            throw ValidationException::withMessages(['reason' => 'A payment reversal reason is required.']);
+        }
+
+        return DB::transaction(function () use ($paymentId, $reason, $requestKey, $actor, $membership): BillingPaymentReversal {
+            $payment = BillingPayment::query()->lockForUpdate()->findOrFail($paymentId);
+            $this->assertPaymentScope($payment, $membership);
+            $existing = BillingPaymentReversal::query()->where('request_key', $requestKey)->first();
+            if ($existing !== null) {
+                if ((int) $existing->payment_id !== $paymentId || (int) $existing->requested_by !== (int) $actor->getKey() || $existing->reason !== trim($reason)) {
+                    throw ValidationException::withMessages(['request_key' => 'This reversal key is already bound to another request.']);
+                }
+
+                return $existing;
+            }
+            if ($payment->status !== 'confirmed') {
+                throw new ConflictHttpException('Only a confirmed payment can be reversed.');
+            }
+            if ($payment->refunds()->whereIn('status', ['pending_approval', 'approved'])->exists() || $this->hasActiveReversal($paymentId)) {
+                throw new ConflictHttpException('Resolve existing refund or reversal review before requesting another payment reversal.');
+            }
+            $reversal = BillingPaymentReversal::query()->create([
+                'payment_id' => $paymentId,
+                'reversal_number' => 'PRV-'.now()->format('Ymd').'-'.Str::upper(Str::random(8)),
+                'request_key' => $requestKey,
+                'status' => 'pending_approval',
+                'reason' => trim($reason),
+                'requested_by' => $actor->getKey(),
+                'requested_at' => now(),
+            ]);
+            $this->event($payment, $actor, 'payment.reversal.requested', 'confirmed', 'reversal_pending_approval', 'pr.request.'.$requestKey, [
+                'reversal_number' => $reversal->reversal_number, 'reason' => mb_substr(trim($reason), 0, 500),
+            ]);
+            $this->audit->record('billing.payment.reversal.requested', $actor, (int) $membership->tenant_id, $reversal, ['payment_number' => $payment->payment_number, 'reversal_number' => $reversal->reversal_number]);
+
+            return $reversal;
+        }, 3);
+    }
+
+    public function reviewReversal(int $reversalId, bool $approve, string $note, User $actor): BillingPaymentReversal
+    {
+        $membership = $this->context->membership();
+        abort_unless($membership->hasPermission('billing.payments.reverse.approve'), 403);
+        if (trim($note) === '') {
+            throw ValidationException::withMessages(['note' => 'A review note is required.']);
+        }
+
+        return DB::transaction(function () use ($reversalId, $approve, $note, $actor, $membership): BillingPaymentReversal {
+            $reversal = BillingPaymentReversal::query()->lockForUpdate()->findOrFail($reversalId);
+            $payment = BillingPayment::query()->lockForUpdate()->findOrFail($reversal->payment_id);
+            $this->assertPaymentScope($payment, $membership);
+            $target = $approve ? 'approved' : 'rejected';
+            if ($reversal->status === $target && (int) $reversal->reviewed_by === (int) $actor->getKey()) {
+                return $reversal;
+            }
+            if ($reversal->status !== 'pending_approval') {
+                throw new ConflictHttpException('Only pending payment reversal requests can be reviewed.');
+            }
+            if ((int) $reversal->requested_by === (int) $actor->getKey()) {
+                throw ValidationException::withMessages(['reversal' => 'A payment reversal requester cannot approve or reject their own request.']);
+            }
+            $reversal->forceFill(['status' => $target, 'reviewed_by' => $actor->getKey(), 'reviewed_at' => now(), 'review_note' => trim($note)])->save();
+            $this->event($payment, $actor, 'payment.reversal.'.$target, 'reversal_pending_approval', 'reversal_'.$target, 'pr.review.'.$reversal->getKey(), [
+                'reversal_number' => $reversal->reversal_number, 'note' => mb_substr(trim($note), 0, 500),
+            ]);
+            $this->audit->record('billing.payment.reversal.'.$target, $actor, (int) $membership->tenant_id, $reversal, ['payment_number' => $payment->payment_number, 'reversal_number' => $reversal->reversal_number]);
+            $this->notifyStudentAndGuardians($payment, 'billing.payment.reversal.'.$target, $approve ? 'A payment reversal was approved for controlled execution.' : 'A payment reversal request was declined.');
+
+            return $reversal;
+        }, 3);
+    }
+
+    public function executeReversal(int $reversalId, User $actor): BillingPaymentReversal
+    {
+        $membership = $this->context->membership();
+        abort_unless($membership->hasPermission('billing.payments.reverse.execute'), 403);
+
+        return DB::transaction(function () use ($reversalId, $actor, $membership): BillingPaymentReversal {
+            $reversal = BillingPaymentReversal::query()->lockForUpdate()->findOrFail($reversalId);
+            $payment = BillingPayment::query()->lockForUpdate()->findOrFail($reversal->payment_id);
+            $this->assertPaymentScope($payment, $membership);
+            if ($reversal->status === 'reversed' && $payment->status === 'reversed') {
+                return $reversal;
+            }
+            if ($reversal->status !== 'approved' || $payment->status !== 'confirmed') {
+                throw new ConflictHttpException('Only an approved reversal of a confirmed payment can execute.');
+            }
+            if ((int) $reversal->requested_by === (int) $actor->getKey() || (int) $reversal->reviewed_by === (int) $actor->getKey()) {
+                throw ValidationException::withMessages(['reversal' => 'The requester and reviewer cannot execute the payment reversal.']);
+            }
+            if ($payment->refunds()->whereIn('status', ['pending_approval', 'approved'])->exists()) {
+                throw new ConflictHttpException('Resolve pending refunds before executing a payment reversal.');
+            }
+
+            $allocations = BillingPaymentAllocation::query()->where('payment_id', $payment->getKey())->orderBy('invoice_id')->orderBy('id')->lockForUpdate()->get();
+            $refundsByAllocation = collect();
+            if ($allocations->isNotEmpty()) {
+                $refundsByAllocation = DB::table('billing_payment_refund_allocations as refund_allocations')
+                    ->join('billing_payment_refunds as refunds', function ($join): void {
+                        $join->on('refunds.tenant_id', '=', 'refund_allocations.tenant_id')->on('refunds.id', '=', 'refund_allocations.refund_id');
+                    })->where('refunds.status', 'refunded')->whereIn('refund_allocations.payment_allocation_id', $allocations->modelKeys())
+                    ->selectRaw('refund_allocations.payment_allocation_id, SUM(refund_allocations.amount) as refunded_amount')
+                    ->groupBy('refund_allocations.payment_allocation_id')->get()->keyBy('payment_allocation_id');
+            }
+            $netByInvoice = [];
+            foreach ($allocations as $allocation) {
+                $refunded = BillingMoney::toMinor((string) ($refundsByAllocation->get($allocation->getKey())->refunded_amount ?? '0.00'));
+                $net = BillingMoney::toMinor((string) $allocation->amount) - $refunded;
+                if ($net < 0) {
+                    throw new LogicException('Refunded allocation history exceeds its original payment allocation.');
+                }
+                $netByInvoice[$allocation->invoice_id] = ($netByInvoice[$allocation->invoice_id] ?? 0) + $net;
+            }
+            $invoiceIds = array_map('intval', array_keys($netByInvoice));
+            sort($invoiceIds);
+            $invoices = $invoiceIds === [] ? collect() : BillingInvoice::query()->whereIn('id', $invoiceIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            foreach ($netByInvoice as $invoiceId => $amountMinor) {
+                if ($amountMinor === 0) {
+                    continue;
+                }
+                $invoice = $invoices->get((int) $invoiceId);
+                if ($invoice === null || $invoice->status === 'cancelled') {
+                    throw new ConflictHttpException('An allocated invoice is no longer eligible for payment reversal.');
+                }
+                $paid = BillingMoney::toMinor((string) $invoice->paid_amount);
+                $outstanding = BillingMoney::toMinor((string) $invoice->outstanding_amount);
+                $adjustedTotal = BillingMoney::toMinor((string) $invoice->adjusted_total);
+                if ($amountMinor > $paid || $outstanding + $amountMinor > $adjustedTotal) {
+                    throw new ConflictHttpException('Invoice balances changed and no longer support this payment reversal.');
+                }
+                $newPaid = $paid - $amountMinor;
+                $newOutstanding = $outstanding + $amountMinor;
+                $invoice->forceFill(['paid_amount' => BillingMoney::fromMinor($newPaid), 'outstanding_amount' => BillingMoney::fromMinor($newOutstanding), 'status' => $newPaid === 0 ? 'issued' : 'partially_paid'])->save();
+            }
+            $allocatedReversed = array_sum($netByInvoice);
+            $unappliedAtReversal = BillingMoney::toMinor((string) $payment->unapplied_amount);
+            $payment->forceFill(['status' => 'reversed', 'unapplied_amount' => '0.00'])->save();
+            $reversal->forceFill(['status' => 'reversed', 'executed_by' => $actor->getKey(), 'executed_at' => now()])->save();
+            $this->event($payment, $actor, 'payment.reversal.executed', 'confirmed', 'reversed', 'pr.execute.'.$reversal->getKey(), [
+                'reversal_number' => $reversal->reversal_number,
+                'reversed_allocated_amount' => BillingMoney::fromMinor($allocatedReversed),
+                'unapplied_amount_removed' => BillingMoney::fromMinor($unappliedAtReversal),
+            ]);
+            $this->audit->record('billing.payment.reversal.executed', $actor, (int) $membership->tenant_id, $reversal, [
+                'payment_number' => $payment->payment_number, 'reversal_number' => $reversal->reversal_number,
+                'reversed_allocated_amount' => BillingMoney::fromMinor($allocatedReversed),
+            ]);
+            $this->notifyStudentAndGuardians($payment, 'billing.payment.reversed', 'A payment was reversed and affected invoice balances were restored.');
+
+            return $reversal;
         }, 3);
     }
 
@@ -454,6 +616,11 @@ final class BillingPaymentWorkflow
         if ($existing !== null && ((int) $existing->payment_id !== $paymentId || $existing->event_type !== $expectedType)) {
             throw ValidationException::withMessages(['request_key' => 'This request key is already bound to another financial operation.']);
         }
+    }
+
+    private function hasActiveReversal(int $paymentId): bool
+    {
+        return BillingPaymentReversal::query()->where('payment_id', $paymentId)->whereIn('status', ['pending_approval', 'approved', 'reversed'])->exists();
     }
 
     private function notifyStudentAndGuardians(BillingPayment $payment, string $event, string $message): void

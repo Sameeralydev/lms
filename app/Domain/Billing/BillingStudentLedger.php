@@ -7,6 +7,7 @@ use App\Models\BillingAdjustment;
 use App\Models\BillingInvoice;
 use App\Models\BillingPayment;
 use App\Models\BillingPaymentAllocation;
+use App\Models\BillingPaymentEvent;
 use App\Models\BillingPaymentRefundAllocation;
 use App\Models\SisStudent;
 use App\Models\SisStudentGuardian;
@@ -50,6 +51,14 @@ final class BillingStudentLedger
         foreach ($reversals as $reversal) {
             $entries->push($this->entry(Carbon::parse($reversal->reversed_at)->toIso8601String(), 'refund', $reversal->refund->refund_number, 'allocation_reversal', (string) $reversal->amount, '0.00', $reversal->invoice->currency, 'Refund reversed an invoice payment allocation'));
         }
+        $paymentReversals = BillingPaymentEvent::query()->with('payment:id,student_id,payment_number,currency')->where('event_type', 'payment.reversal.executed')
+            ->whereHas('payment', fn ($query) => $query->where('student_id', $studentId))->orderBy('occurred_at')->limit(10000)->get();
+        foreach ($paymentReversals as $event) {
+            $amount = (string) ($event->metadataArray()['reversed_allocated_amount'] ?? '0.00');
+            if (BillingMoney::toMinor($amount) > 0) {
+                $entries->push($this->entry(Carbon::parse($event->occurred_at)->toIso8601String(), 'payment reversal', $event->payment->payment_number, 'payment_reversal', $amount, '0.00', $event->payment->currency, 'Payment reversal restored the allocated invoice balance'));
+            }
+        }
         $adjustments = BillingAdjustment::query()->with('invoice:id,student_id,currency')->whereIn('status', ['posted', 'reversed'])
             ->whereHas('invoice', fn ($query) => $query->where('student_id', $studentId))->orderBy('posted_at')->limit(10000)->get();
         foreach ($adjustments as $adjustment) {
@@ -59,7 +68,7 @@ final class BillingStudentLedger
                 $credit ? (string) $adjustment->amount : '0.00', $adjustment->currency, $adjustment->reason));
         }
         foreach (BillingPayment::query()->where('student_id', $studentId)->where('status', 'confirmed')->where('unapplied_amount', '>', 0)->limit(10000)->get() as $payment) {
-            $entries->push($this->entry($payment->confirmed_at->toIso8601String(), 'payment', $payment->payment_number, 'unapplied_credit', '0.00', '0.00', $payment->currency,
+            $entries->push($this->entry($payment->confirmed_at->toIso8601String(), 'payment', $payment->payment_number, 'unapplied_credit', '0.00', (string) $payment->unapplied_amount, $payment->currency,
                 'Unapplied payment credit: '.$payment->unapplied_amount));
         }
         $entries = $entries->sortBy([['date', 'asc'], ['reference', 'asc']])->values();

@@ -39,6 +39,13 @@ type Payment = {
         reason: string;
         payout_reference: string | null;
     }[];
+    reversals: {
+        id: number;
+        reversal_number: string;
+        status: string;
+        reason: string;
+        review_note: string | null;
+    }[];
 };
 type PageLink = { url: string | null; label: string; active: boolean };
 
@@ -68,6 +75,9 @@ export default function BillingPayments({
         approve_refund: boolean;
         execute_refund: boolean;
         view_refunds: boolean;
+        request_reversal: boolean;
+        approve_reversal: boolean;
+        execute_reversal: boolean;
     };
 }) {
     const base = `/t/${tenant.slug}/billing`;
@@ -394,6 +404,41 @@ export default function BillingPayments({
                                         ))}
                                     </ul>
                                 )}
+                                {payment.reversals.length > 0 && (
+                                    <div className="border-border mt-3 space-y-2 border-t pt-3">
+                                        <h4 className="text-text-primary text-sm font-semibold">
+                                            Payment reversal history
+                                        </h4>
+                                        {payment.reversals.map((reversal) => (
+                                            <div key={reversal.id} className="bg-canvas rounded-lg p-3">
+                                                <p className="text-text-primary text-sm font-medium">
+                                                    {reversal.reversal_number} ·{' '}
+                                                    {reversal.status.replace('_', ' ')}
+                                                </p>
+                                                <p className="text-text-secondary mt-1 text-sm">
+                                                    {reversal.reason}
+                                                </p>
+                                                {reversal.review_note && (
+                                                    <p className="text-text-secondary mt-1 text-sm">
+                                                        Review: {reversal.review_note}
+                                                    </p>
+                                                )}
+                                                <PaymentReversalDecision
+                                                    reversal={reversal}
+                                                    base={base}
+                                                    permissions={permissions}
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {permissions.request_reversal &&
+                                    payment.status === 'confirmed' &&
+                                    !payment.reversals.some((reversal) =>
+                                        ['pending_approval', 'approved', 'reversed'].includes(
+                                            reversal.status,
+                                        ),
+                                    ) && <PaymentReversalRequest payment={payment} base={base} />}
                                 <div className="mt-3 flex flex-wrap gap-3">
                                     {payment.receipt_number && (
                                         <a
@@ -528,6 +573,112 @@ function RefundRequest({ payment, base }: { payment: Payment; base: string }) {
                 Request refund
             </button>
         </form>
+    );
+}
+
+function PaymentReversalRequest({ payment, base }: { payment: Payment; base: string }) {
+    const form = useForm({ reason: '', request_key: '' });
+    const requestKey = useRef('');
+    return (
+        <form
+            className="border-border mt-3 grid gap-2 rounded-lg border p-3 sm:grid-cols-[1fr_auto]"
+            onSubmit={(event) => {
+                event.preventDefault();
+                requestKey.current ||= crypto.randomUUID();
+                form.transform((data) => ({ ...data, request_key: requestKey.current }));
+                form.post(`${base}/payments/${payment.id}/reversals`, {
+                    onSuccess: () => {
+                        requestKey.current = '';
+                        form.reset();
+                    },
+                });
+            }}
+        >
+            <label className="text-text-secondary text-sm">
+                Payment reversal reason
+                <input
+                    className="border-border bg-canvas text-text-primary mt-1 w-full rounded-lg border p-2"
+                    minLength={8}
+                    maxLength={1000}
+                    required
+                    value={form.data.reason}
+                    onChange={(event) => form.setData('reason', event.currentTarget.value)}
+                />
+            </label>
+            <button
+                className="border-border self-end rounded-lg border px-3 py-2 text-sm font-medium"
+                disabled={form.processing}
+            >
+                Request reversal
+            </button>
+        </form>
+    );
+}
+
+function PaymentReversalDecision({
+    reversal,
+    base,
+    permissions,
+}: {
+    reversal: Payment['reversals'][number];
+    base: string;
+    permissions: { approve_reversal: boolean; execute_reversal: boolean };
+}) {
+    const review = useForm({ decision: 'approve', note: '' });
+    const submitReview = (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        review.post(`${base}/payment-reversals/${reversal.id}/review`);
+    };
+    return (
+        <div className="mt-2 flex flex-wrap items-end gap-2">
+            {permissions.approve_reversal && reversal.status === 'pending_approval' && (
+                <form className="flex flex-wrap items-end gap-2" onSubmit={submitReview}>
+                    <label className="text-text-secondary text-xs">
+                        Decision
+                        <select
+                            className="border-border bg-surface text-text-primary mt-1 rounded-lg border p-2"
+                            value={review.data.decision}
+                            onChange={(event) => review.setData('decision', event.currentTarget.value)}
+                        >
+                            <option value="approve">Approve</option>
+                            <option value="reject">Reject</option>
+                        </select>
+                    </label>
+                    <label className="text-text-secondary text-xs">
+                        Review note
+                        <input
+                            className="border-border bg-surface text-text-primary mt-1 rounded-lg border p-2"
+                            minLength={3}
+                            maxLength={500}
+                            required
+                            value={review.data.note}
+                            onChange={(event) => review.setData('note', event.currentTarget.value)}
+                        />
+                    </label>
+                    <button
+                        className="bg-brand rounded-lg px-3 py-2 text-sm font-semibold text-white"
+                        disabled={review.processing}
+                    >
+                        Save decision
+                    </button>
+                </form>
+            )}
+            {permissions.execute_reversal && reversal.status === 'approved' && (
+                <form
+                    onSubmit={(event) => {
+                        event.preventDefault();
+                        review.post(`${base}/payment-reversals/${reversal.id}/execute`);
+                    }}
+                >
+                    <button
+                        className="border-border rounded-lg border px-3 py-2 text-sm font-medium"
+                        disabled={review.processing}
+                    >
+                        Execute approved reversal
+                    </button>
+                </form>
+            )}
+        </div>
     );
 }
 

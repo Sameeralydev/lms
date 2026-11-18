@@ -36,3 +36,15 @@ The six feature tests cover:
 
 - `php tests/run.php --phase=18 --profile=sqlite --no-report` — PASS, 6 tests / 140 assertions, exit 0. This fresh run exercised the existing payment, refund, guardian-consent and reconciliation workflows after adding adjusted invoice totals and ledger relationships.
 - This focused rerun did not execute MySQL, migrations against a persistent schema, browser tests, or the full Phase 18 static/frontend campaign.
+
+## Reverification update — payment reversal (2026-11-18)
+
+- `php tests/run.php --phase=18 --profile=sqlite --no-report` — PASS, 7 tests / 207 assertions, exit 0.
+- The new payment-reversal feature test covers request idempotency, requester/reviewer/executor separation, no balance mutation before execution, refund lockout, invoice restoration, replay-safe execution, immutable event/audit history, void receipt access, and ledger reconciliation.
+- `vendor/bin/phpstan analyse` on changed billing services/controllers/models — PASS, no errors.
+- `vendor/bin/pint --test` on changed PHP — PASS.
+- `php -l` on changed PHP, model, migration, test, and routes — PASS.
+- TypeScript, targeted ESLint, targeted Prettier, Vite build (706 modules), route inventory (51 billing routes), Composer validation/platform checks, and `git diff --check` — PASS.
+- MySQL guarded test/ownership path, migration on a persistent database, concurrency, full Chromium, six-theme accessibility, Composer/npm audit, and hosted CI — NOT RUN.
+
+The runner used the isolated SQLite profile. This evidence does not establish MySQL behavior or production readiness.

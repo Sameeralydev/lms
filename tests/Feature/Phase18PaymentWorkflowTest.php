@@ -51,6 +51,15 @@ final class Phase18PaymentWorkflowTest extends TestCase
         $this->actingAs($owner)->get("/t/{$tenant->slug}/billing/payments/{$paymentId}/receipt")->assertOk()->assertHeader('Content-Type', 'application/pdf');
         $this->assertDatabaseHas('audit_events', ['tenant_id' => $tenant->getKey(), 'event_type' => 'billing.payment.confirmed']);
         self::assertSame(1, \DB::table('notifications')->where('notifiable_type', User::class)->where('notifiable_id', $learner->getKey())->count(), 'Idempotent replay must not duplicate payment notifications.');
+        $this->actingAs($owner)->get("/t/{$tenant->slug}/billing/ledger/{$student->getKey()}")->assertOk()->assertInertia(fn ($page) => $page
+            ->where('currency_totals.0.debit', '100.00')->where('currency_totals.0.credit', '60.00')->where('currency_totals.0.balance', '40.00'));
+        $paymentId = (int) \DB::table('billing_payments')->where('tenant_id', $tenant->getKey())->value('id');
+        $this->actingAs($owner)->post("{$base}/{$paymentId}/allocate", [
+            'request_key' => 'cash-credit-'.Str::uuid(), 'allocations' => [['invoice_id' => $invoice->getKey(), 'amount' => '20.00']],
+        ])->assertSessionHasNoErrors();
+        self::assertSame('40.00', (string) $invoice->fresh()->outstanding_amount);
+        $this->actingAs($owner)->get("/t/{$tenant->slug}/billing/ledger/{$student->getKey()}")->assertOk()->assertInertia(fn ($page) => $page
+            ->where('currency_totals.0.credit', '60.00')->where('currency_totals.0.balance', '40.00'));
         $this->actingAs($owner)->post($base, [...$payload, 'amount' => '61.00'])->assertSessionHasErrors('idempotency_key');
         self::assertSame(1, \DB::table('billing_payments')->where('tenant_id', $tenant->getKey())->count());
     }
@@ -152,6 +161,49 @@ final class Phase18PaymentWorkflowTest extends TestCase
         self::assertContains('billing.refund.requested', $notificationTypes);
         self::assertContains('billing.refund.approved', $notificationTypes);
         self::assertContains('billing.refund.executed', $notificationTypes);
+    }
+
+    public function test_payment_reversal_uses_separate_review_and_execution_and_preserves_history(): void
+    {
+        [$tenant, $requester, $membership] = $this->provision('Payment Reversal Academy');
+        $reviewer = User::factory()->create();
+        $executor = User::factory()->create();
+        $this->member($tenant, $membership, $reviewer, 'finance.manager');
+        $this->member($tenant, $membership, $executor, 'finance.manager');
+        $student = $this->student($tenant, $membership, 'STU-18010');
+        $invoice = $this->invoice($tenant, $membership, $requester, $student, '100.00');
+        $base = "/t/{$tenant->slug}/billing";
+        $this->actingAs($requester)->post("{$base}/payments", [
+            'student_id' => $student->getKey(), 'method' => 'cash', 'amount' => '100.00', 'currency' => 'USD',
+            'reference' => 'REVERSAL-SOURCE-18010', 'idempotency_key' => 'reversal-source-'.Str::uuid(),
+            'allocations' => [['invoice_id' => $invoice->getKey(), 'amount' => '80.00']],
+        ])->assertSessionHasNoErrors();
+        $paymentId = (int) \DB::table('billing_payments')->where('tenant_id', $tenant->getKey())->value('id');
+        $requestKey = 'reversal-'.Str::uuid();
+        $reversalPayload = ['request_key' => $requestKey, 'reason' => 'Correct a duplicated cash receipt.'];
+        $this->actingAs($requester)->post("{$base}/payments/{$paymentId}/reversals", $reversalPayload)->assertSessionHasNoErrors();
+        $this->actingAs($requester)->post("{$base}/payments/{$paymentId}/reversals", $reversalPayload)->assertSessionHasNoErrors();
+        $reversalId = (int) \DB::table('billing_payment_reversals')->where('request_key', $requestKey)->value('id');
+        self::assertSame(1, \DB::table('billing_payment_reversals')->where('payment_id', $paymentId)->count());
+        self::assertSame('80.00', (string) $invoice->fresh()->paid_amount, 'Requesting a reversal does not alter settlement.');
+        $this->actingAs($requester)->post("{$base}/payment-reversals/{$reversalId}/review", ['decision' => 'approve', 'note' => 'Reviewed the original receipt.'])->assertSessionHasErrors('reversal');
+        $this->actingAs($reviewer)->post("{$base}/payment-reversals/{$reversalId}/review", ['decision' => 'approve', 'note' => 'Reviewed the original receipt.'])->assertSessionHasNoErrors();
+        $this->actingAs($reviewer)->post("{$base}/payments/{$paymentId}/refunds", ['amount' => '10.00', 'reason' => 'Refund requested during reversal.', 'request_key' => 'refund-block-'.Str::uuid()])->assertStatus(409);
+        $this->actingAs($reviewer)->post("{$base}/payment-reversals/{$reversalId}/execute")->assertSessionHasErrors('reversal');
+        $this->actingAs($executor)->post("{$base}/payment-reversals/{$reversalId}/execute")->assertStatus(302)->assertSessionHasNoErrors();
+        $this->actingAs($executor)->post("{$base}/payment-reversals/{$reversalId}/execute")->assertStatus(302)->assertSessionHasNoErrors();
+
+        self::assertSame('reversed', \DB::table('billing_payments')->where('id', $paymentId)->value('status'));
+        self::assertSame('reversed', \DB::table('billing_payment_reversals')->where('id', $reversalId)->value('status'));
+        self::assertSame(0, BillingMoney::toMinor((string) \DB::table('billing_payments')->where('id', $paymentId)->value('unapplied_amount')));
+        self::assertSame('0.00', (string) $invoice->fresh()->paid_amount);
+        self::assertSame('100.00', (string) $invoice->fresh()->outstanding_amount);
+        self::assertSame(1, \DB::table('billing_payment_events')->where('payment_id', $paymentId)->where('event_type', 'payment.reversal.executed')->count());
+        $this->assertDatabaseHas('audit_events', ['tenant_id' => $tenant->getKey(), 'event_type' => 'billing.payment.reversal.executed']);
+        $this->actingAs($requester)->get("{$base}/payments/{$paymentId}/receipt")->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $this->actingAs($requester)->get("{$base}/ledger/{$student->getKey()}")->assertOk()->assertInertia(fn ($page) => $page
+            ->where('currency_totals.0.debit', '180.00')->where('currency_totals.0.credit', '80.00')->where('currency_totals.0.balance', '100.00'));
+        $this->actingAs($requester)->post("{$base}/payments/{$paymentId}/refunds", ['amount' => '10.00', 'reason' => 'Cannot refund reversed receipt.', 'request_key' => 'refund-after-reversal-'.Str::uuid()])->assertStatus(409);
     }
 
     public function test_guardian_payment_access_requires_explicit_financial_grant_and_revocation_is_immediate(): void
@@ -268,7 +320,7 @@ final class Phase18PaymentWorkflowTest extends TestCase
             return BillingInvoice::query()->create([
                 'institution_id' => $membership->institution_id, 'campus_id' => $student->home_campus_id, 'student_id' => $student->getKey(), 'fee_structure_id' => $structure->getKey(),
                 'invoice_number' => 'INV-'.Str::upper(Str::random(10)), 'idempotency_key' => (string) Str::uuid(), 'period_start' => '2026-11-01', 'period_end' => '2026-11-30', 'due_on' => '2026-11-30',
-                'currency' => 'USD', 'subtotal' => $amount, 'discount_total' => '0.00', 'total' => $amount, 'paid_amount' => '0.00', 'outstanding_amount' => $amount,
+                'currency' => 'USD', 'subtotal' => $amount, 'discount_total' => '0.00', 'adjusted_total' => $amount, 'total' => $amount, 'paid_amount' => '0.00', 'outstanding_amount' => $amount,
                 'status' => 'issued', 'issued_at' => now(), 'issued_by' => $actor->getKey(),
             ]);
         } finally {

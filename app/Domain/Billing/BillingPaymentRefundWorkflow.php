@@ -10,6 +10,7 @@ use App\Models\BillingPaymentAllocation;
 use App\Models\BillingPaymentEvent;
 use App\Models\BillingPaymentRefund;
 use App\Models\BillingPaymentRefundAllocation;
+use App\Models\BillingPaymentReversal;
 use App\Models\SisStudentGuardian;
 use App\Models\TenantMembership;
 use App\Models\User;
@@ -48,6 +49,9 @@ final class BillingPaymentRefundWorkflow
             }
             if ($payment->status !== 'confirmed') {
                 throw new ConflictHttpException('Only confirmed payments may be considered for a refund.');
+            }
+            if (BillingPaymentReversal::query()->where('payment_id', $payment->getKey())->whereIn('status', ['pending_approval', 'approved', 'reversed'])->exists()) {
+                throw new ConflictHttpException('A refund cannot be requested while a payment reversal is under review or completed.');
             }
             $reservedMinor = 0;
             foreach (BillingPaymentRefund::query()->where('payment_id', $payment->getKey())->whereIn('status', ['pending_approval', 'approved', 'refunded'])->get(['amount']) as $refund) {

@@ -34,3 +34,9 @@ No Phase 19 work is started. No database reset, MySQL migration, credential acce
 The current focused result supersedes the earlier count above: Phase 18 SQLite `6 passed / 140 assertions` through `php tests/run.php --phase=18 --profile=sqlite --no-report`. Focused PHPStan passed with no errors; TypeScript, targeted ESLint/Prettier, Pint, Vite production build (704 modules), billing route inventory (29 routes), and `git diff --check` passed. Exact evidence is in `TEST_REPORT.md`.
 
 The gate remains DEVELOPMENT IN PROGRESS because external provider approval, external settlement reconciliation policy, separate reversal/credit policy, guarded MySQL ownership/integration/concurrency verification, and authenticated browser verification remain incomplete.
+
+## 2026-11-18 continuation gate
+
+The latest focused SQLite Phase 18 suite passes 7 tests / 207 assertions and includes the new payment-reversal workflow. Focused PHPStan/Pint/PHP syntax, TypeScript/ESLint/Prettier, Vite build, routes, and diff checks passed. Phase 17's focused suite passes 10/268; enrollment regression passes 9/190. The latest tests do not include MySQL, browser/accessibility, external provider, bank statement, or full product QA.
+
+Remaining implementation is documented in `REQUIREMENT_TRACEABILITY.md`, including student-credit transfer lifecycle, installment settlement/amendments, external statement matching, optional gateway and cash-control policy. Phase 18 is not complete; no persistent migrations have been applied from this continuation.

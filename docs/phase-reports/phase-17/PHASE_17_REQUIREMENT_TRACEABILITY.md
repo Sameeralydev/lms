@@ -78,3 +78,27 @@ No MySQL preflight/migration or persistent database change, ClamAV/EICAR check, 
 Remaining functional policy/product work includes transfer/withdrawal proration, academic/program applicability and installment amendments/reconciliation, wider billing report catalog and record drill-down/PDF, complete billing notification lifecycle/read history, staff recurring-plan recovery/ownership handoff, and product-approved late-fee/term-billing rules. The original approved Phase 17 source document is not present in the repository, so no requirement count is inferred beyond the user-provided specification and repository evidence.
 
 Current phase status: **PHASE 17 — DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS**.
+
+## 2026-11-18 financial integration continuation
+
+This continuation adds a controlled payment-reversal lifecycle to the existing Phase 18 payment engine. Requests require a reason and idempotency key; review and execution are separate permissions and actors. Execution locks the payment and affected invoices, reverses only the net allocated amount after completed allocation refunds, clears the remaining unapplied balance, and marks the original payment reversed without editing or deleting its receipt, events, or allocations. Pending refunds and reversals block conflicting operations. The issued receipt stays available and is labeled void after reversal. New reversal events reconcile in the derived student statement.
+
+The student statement now counts the current unapplied payment amount as a credit. A regression confirms a later allocation moves that amount from unapplied credit to invoice allocation without changing total credit or net balance.
+
+Fresh focused verification (2026-11-18):
+
+- `php tests/run.php --phase=17 --profile=sqlite --no-report` — PASS, 10 tests / 268 assertions.
+- `php tests/run.php --phase=18 --profile=sqlite --no-report` — PASS, 7 tests / 207 assertions.
+- `php artisan test --filter=CourseEnrollmentTest` — PASS, 9 tests / 190 assertions.
+- Focused PHPStan — PASS, no errors; Pint — PASS; changed PHP syntax — PASS.
+- `npm.cmd run typecheck`, focused ESLint, focused Prettier, and `npm.cmd run build` — PASS; Vite transformed 706 modules.
+- `composer validate --no-check-publish` and `composer check-platform-reqs` — PASS.
+- `php artisan route:list --path=billing --except-vendor` — PASS, 51 routes listed; `git diff --check` — PASS.
+
+The Phase 17/18 SQLite runners exercise isolated test databases. No development or MySQL schema was contacted, and no persistent migration was executed. No full Chromium journey, six-theme accessibility matrix, MySQL concurrency/ownership validation, hosted CI, external bank statement import, payment gateway, or external payout was tested.
+
+Still incomplete: academic/session/program fee applicability; configured proration policy and previews; installment amendments/history and due reminders; student credit transfers and reversals as a separately persisted credit ledger; bulk billing preview/history and cohort filters; wider financial report catalog/drill-down/PDF; automated due/overdue reminders and delivery history; and recurring-plan operator reassignment/recovery. Late fees, term cadence, external bank formats/matching, cheque/cashier policy, and gateway integration remain policy/provider decisions. Existing installment schedules are not yet a source of per-installment settlement balances; invoice balances remain authoritative.
+
+Phase 18 reversal capability is now implemented for full payment reversal through a compensating lifecycle; it is not a bank transfer reversal, refund payout, or partial correction. Tenant/campus scoped routes and three payment reversal permissions enforce request, independent review, and third-party execution.
+
+Current status remains **PHASE 17 — DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS** and **PHASE 18 — DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS**. MySQL and browser verification remain pending; missing functionality above is not classified as QA-only work.

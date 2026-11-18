@@ -60,6 +60,12 @@ class BillingPayment extends AcademicRecord
         return $this->hasMany(BillingPaymentRefund::class, 'payment_id')->orderBy('id');
     }
 
+    /** @return HasMany<BillingPaymentReversal, $this> */
+    public function reversals(): HasMany
+    {
+        return $this->hasMany(BillingPaymentReversal::class, 'payment_id')->orderBy('id');
+    }
+
     /** @return BelongsTo<User, $this> */
     public function recordedBy(): BelongsTo
     {

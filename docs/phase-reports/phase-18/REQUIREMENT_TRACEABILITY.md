@@ -52,3 +52,15 @@ Phase 18 is not declared complete. Internal cash/manual-bank collection, scoped 
 ## Verification refresh — 2026-11-18
 
 Supersedes the earlier assertion count above: the latest focused run is 6 tests / 140 assertions, exit 0. Focused PHPStan, TypeScript, ESLint, Prettier, Pint, Vite production build, billing route listing, and `git diff --check` passed. See `TEST_REPORT.md` for the exact commands and limitations.
+
+## Latest payment reversal and ledger continuation (2026-11-18)
+
+- **Payment reversal/correction:** IMPLEMENTED for a full reversal of a confirmed payment. `BillingPaymentWorkflow` provides reasoned, idempotent request; independent approve/reject; distinct execution; tenant/campus assertions; row locks; balance restoration; replay safety; immutable payment events and audit events. Pending refunds/reversals block conflicting operations. New permission keys: `billing.payments.reverse.request`, `.approve`, `.execute`; new migration `2026_11_20_000005_create_billing_payment_reversals.php`; payment UI displays history and role-gated actions. Executed refunds are reflected by reversing only the remaining net allocated amounts. No source payment/allocation/receipt is deleted or edited; receipts remain visible as void after reversal.
+- **Student credit:** PARTIAL. The statement now includes current unapplied confirmed payment balance as a credit and avoids counting it again once allocated. It does not create transferable independent credit accounts or credit transfers; those remain a policy-backed feature.
+- **Financial reconciliation:** Focused SQLite proves invoice balance is restored from 80 paid to 0 paid / 100 outstanding after reversal, and the ledger returns to 100 net receivable. Full MySQL locking and independent-session race validation remain pending.
+- **Fresh tests:** `php tests/run.php --phase=18 --profile=sqlite --no-report` — PASS, 7 tests / 207 assertions. `Phase18PaymentWorkflowTest` now covers separation of requester/reviewer/executor, refund lockout, duplicate execution, immutable payment history, receipt preservation, audit and ledger balance.
+- **Fresh code checks:** Focused PHPStan, Pint, PHP syntax, TypeScript, targeted ESLint/Prettier, build, route listing, and `git diff --check` passed; production build transformed 706 modules.
+
+Remaining verified omissions include persisted student credit transfers/reversals, installment-level reconciliation/amendment history, external bank statement batches, gateway callbacks, cashier/cheque workflows, and comprehensive MySQL/browser verification. External gateway and bank import work depend on owner-approved providers, formats, controls, and credentials.
+
+Phase 18 remains **DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS**; this update does not claim complete Phase 18 acceptance.

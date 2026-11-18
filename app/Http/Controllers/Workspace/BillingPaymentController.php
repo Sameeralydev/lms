@@ -13,6 +13,7 @@ use App\Http\Controllers\Controller;
 use App\Models\BillingInvoice;
 use App\Models\BillingPayment;
 use App\Models\BillingPaymentRefund;
+use App\Models\BillingPaymentReversal;
 use App\Models\Campus;
 use App\Models\Institution;
 use App\Models\SisStudent;
@@ -36,7 +37,7 @@ final class BillingPaymentController extends Controller
     {
         $membership = $context->membership();
         abort_unless($membership->hasPermission('billing.payments.view'), 403);
-        $payments = BillingPayment::query()->with(['student:id,student_number,legal_first_name,legal_last_name', 'allocations.invoice:id,invoice_number', 'refunds'])
+        $payments = BillingPayment::query()->with(['student:id,student_number,legal_first_name,legal_last_name', 'allocations.invoice:id,invoice_number', 'refunds', 'reversals'])
             ->where('institution_id', $membership->institution_id)
             ->when($membership->campus_id !== null, fn ($query) => $query->where('campus_id', $membership->campus_id))
             ->when($request->string('status')->isNotEmpty(), fn ($query) => $query->where('status', $request->string('status')->toString()))
@@ -89,12 +90,19 @@ final class BillingPaymentController extends Controller
                     'currency' => $refund->currency, 'status' => $refund->status, 'reason' => $refund->reason,
                     'payout_reference' => $refund->payout_reference,
                 ])->all() : [],
+                'reversals' => $payment->reversals->map(static fn (BillingPaymentReversal $reversal): array => [
+                    'id' => (int) $reversal->getKey(), 'reversal_number' => $reversal->reversal_number, 'status' => $reversal->status,
+                    'reason' => $reversal->reason, 'review_note' => $reversal->review_note,
+                ])->all(),
             ]),
             'permissions' => [
                 'collect' => $membership->hasPermission('billing.payments.collect'), 'verify' => $membership->hasPermission('billing.payments.verify'),
                 'allocate' => $membership->hasPermission('billing.payments.allocate'), 'request_refund' => $membership->hasPermission('billing.refunds.request'),
                 'approve_refund' => $membership->hasPermission('billing.refunds.approve'), 'execute_refund' => $membership->hasPermission('billing.refunds.execute'),
                 'view_refunds' => $canViewRefunds,
+                'request_reversal' => $membership->hasPermission('billing.payments.reverse.request'),
+                'approve_reversal' => $membership->hasPermission('billing.payments.reverse.approve'),
+                'execute_reversal' => $membership->hasPermission('billing.payments.reverse.execute'),
             ],
             'filters' => ['status' => $request->string('status')->toString()],
         ]);
@@ -262,7 +270,14 @@ final class BillingPaymentController extends Controller
         ]);
         $payment = $workflow->record([...$data, 'reference' => isset($data['reference']) ? trim($data['reference']) : null, 'allocations' => $data['allocations'] ?? []], $request->user());
 
-        return redirect()->route('tenant.billing.payments.index', $tenant)->with('status', $payment->status === 'confirmed' ? 'Payment recorded and receipt issued.' : 'Bank transfer recorded for independent verification.');
+        $message = match ($payment->status) {
+            'confirmed' => 'Payment recorded and receipt issued.',
+            'reversed' => 'The matching payment already exists and has been reversed; no new collection was created.',
+            'rejected' => 'The matching bank-transfer submission already exists and was rejected; no new collection was created.',
+            default => 'Bank transfer recorded for independent verification.',
+        };
+
+        return redirect()->route('tenant.billing.payments.index', $tenant)->with('status', $message);
     }
 
     public function verify(Tenant $tenant, int $paymentId, Request $request, TenantContext $context, BillingPaymentWorkflow $workflow): RedirectResponse
@@ -300,6 +315,32 @@ final class BillingPaymentController extends Controller
         $workflow->allocate($paymentId, $data['allocations'], $data['request_key'], $request->user());
 
         return back()->with('status', 'Payment balance allocated to the selected invoices.');
+    }
+
+    public function requestReversal(Tenant $tenant, int $paymentId, Request $request, TenantContext $context, BillingPaymentWorkflow $workflow): RedirectResponse
+    {
+        abort_unless($context->membership()->hasPermission('billing.payments.reverse.request'), 403);
+        $data = $request->validate(['request_key' => ['required', 'string', 'max:80'], 'reason' => ['required', 'string', 'min:8', 'max:1000']]);
+        $workflow->requestReversal($paymentId, $data['reason'], $data['request_key'], $request->user());
+
+        return back()->with('status', 'Payment reversal requested; settlement remains unchanged until independent approval and execution.');
+    }
+
+    public function reviewReversal(Tenant $tenant, int $reversalId, Request $request, TenantContext $context, BillingPaymentWorkflow $workflow): RedirectResponse
+    {
+        abort_unless($context->membership()->hasPermission('billing.payments.reverse.approve'), 403);
+        $data = $request->validate(['decision' => ['required', Rule::in(['approve', 'reject'])], 'note' => ['required', 'string', 'min:3', 'max:500']]);
+        $workflow->reviewReversal($reversalId, $data['decision'] === 'approve', $data['note'], $request->user());
+
+        return back()->with('status', 'Payment reversal decision recorded.');
+    }
+
+    public function executeReversal(Tenant $tenant, int $reversalId, Request $request, TenantContext $context, BillingPaymentWorkflow $workflow): RedirectResponse
+    {
+        abort_unless($context->membership()->hasPermission('billing.payments.reverse.execute'), 403);
+        $workflow->executeReversal($reversalId, $request->user());
+
+        return back()->with('status', 'Approved payment reversal executed; invoice balances were restored transactionally.');
     }
 
     public function requestRefund(Tenant $tenant, int $paymentId, Request $request, TenantContext $context, BillingPaymentRefundWorkflow $workflow): RedirectResponse
@@ -347,7 +388,7 @@ final class BillingPaymentController extends Controller
         abort_unless($membership->hasPermission('billing.receipts.view'), 403);
         $payment = BillingPayment::query()->with(['student', 'recordedBy', 'confirmedBy', 'allocations.invoice', 'events'])->where('institution_id', $membership->institution_id)
             ->when($membership->campus_id !== null, fn ($query) => $query->where('campus_id', $membership->campus_id))->findOrFail($paymentId);
-        abort_unless($payment->status === 'confirmed' && $payment->receipt_number !== null, 404);
+        abort_unless(in_array($payment->status, ['confirmed', 'reversed'], true) && $payment->receipt_number !== null, 404);
         $audit->record('billing.payment_receipt.viewed', $request->user(), (int) $membership->tenant_id, $payment, ['receipt_number' => $payment->receipt_number]);
 
         return $this->receiptResponse($payment, $pdf);
@@ -365,7 +406,7 @@ final class BillingPaymentController extends Controller
         $payment = BillingPayment::query()->with(['student', 'recordedBy', 'confirmedBy', 'allocations.invoice'])->where('institution_id', $membership->institution_id)
             ->whereIn('student_id', array_values(array_unique([...$studentIds, ...$guardianStudentIds])))
             ->when($membership->campus_id !== null, fn ($query) => $query->where('campus_id', $membership->campus_id))->findOrFail($paymentId);
-        abort_unless($payment->status === 'confirmed' && $payment->receipt_number !== null, 404);
+        abort_unless(in_array($payment->status, ['confirmed', 'reversed'], true) && $payment->receipt_number !== null, 404);
 
         return $this->receiptResponse($payment, $pdf);
     }
@@ -383,6 +424,7 @@ final class BillingPaymentController extends Controller
             $institution->display_name,
             $campus === null ? 'Institution-wide collection' : $campus->name,
             'PAYMENT RECEIPT',
+            'Status: '.($payment->status === 'reversed' ? 'VOIDED — payment reversal completed' : 'Confirmed'),
             'Receipt: '.$payment->receipt_number,
             'Payment: '.$payment->payment_number,
             'Student: '.$payment->student->student_number.' - '.trim($payment->student->legal_first_name.' '.$payment->student->legal_last_name),
