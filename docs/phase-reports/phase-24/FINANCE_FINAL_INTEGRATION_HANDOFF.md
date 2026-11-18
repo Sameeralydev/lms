@@ -48,4 +48,4 @@ Billing permissions include fee/assignment/concession/installment/invoice/adjust
 
 ## Git handoff
 
-Branch: `developer-a/integrated`. Base commit: `42adbaecebfbbd6245d620f0ae6c277a0c313e37`. This document is prepared before the corresponding implementation checkpoint commit; update the hash and remote verification after commit/push.
+Branch: `developer-a/integrated`. Implementation checkpoint commit: `377702c09b75c7ed0c0a838fa8e8a812b0457920` (`Continue Phase 17 and 18 billing workflows`). Normal push to `origin/developer-a/integrated` succeeded. Post-push local HEAD and `origin/developer-a/integrated` both resolve to `377702c09b75c7ed0c0a838fa8e8a812b0457920`. No force push or Developer B branch operation occurred.
