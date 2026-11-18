@@ -460,13 +460,12 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/schedule.csv', [AcademicTimetableController::class, 'export'])->name('academics.schedule.csv');
         Route::get('/schedule.ics', [AcademicTimetableController::class, 'export'])->name('academics.schedule.ics');
         Route::get('/instructor/schedule', [AcademicTimetableController::class, 'personal'])->name('academics.instructor-schedule');
-        Route::prefix('academics')->name('academics.')->middleware(['tenant.permission:academic.view', 'tenant.academic.scope', 'tenant.academic.feature'])->group(function (): void {
-            Route::get('/', AcademicDashboardController::class)->name('index');
-            Route::get('/analytics', [AcademicAnalyticsController::class, 'index'])->middleware('tenant.permission:academic.analytics.view')->name('analytics.index');
+        Route::prefix('academics')->name('academics.')->middleware(['tenant.academic.scope', 'tenant.academic.feature'])->group(function (): void {
+            Route::get('/analytics', [AcademicAnalyticsController::class, 'index'])->name('analytics.index');
             Route::get('/analytics.csv', [AcademicAnalyticsController::class, 'export'])->middleware('tenant.permission:academic.analytics.export')->name('analytics.export');
-            Route::get('/analytics/report-builder.csv', [AcademicAnalyticsController::class, 'exportBuilder'])->middleware('tenant.permission:academic.analytics.export')->name('analytics.builder.export');
-            Route::get('/analytics/report-builder.pdf', [AcademicAnalyticsController::class, 'exportBuilderPdf'])->middleware('tenant.permission:academic.analytics.export')->name('analytics.builder.pdf');
-            Route::get('/analytics/drilldown', [AcademicAnalyticsController::class, 'drilldown'])->middleware('tenant.permission:academic.analytics.drilldown')->name('analytics.drilldown');
+            Route::get('/analytics/report-builder.csv', [AcademicAnalyticsController::class, 'exportBuilder'])->name('analytics.builder.export');
+            Route::get('/analytics/report-builder.pdf', [AcademicAnalyticsController::class, 'exportBuilderPdf'])->name('analytics.builder.pdf');
+            Route::get('/analytics/drilldown', [AcademicAnalyticsController::class, 'drilldown'])->name('analytics.drilldown');
             Route::post('/analytics/schedules', [AcademicAnalyticsController::class, 'storeSchedule'])->middleware('tenant.permission:academic.analytics.reports.manage')->name('analytics.schedules.store');
             Route::post('/analytics/schedules/{scheduleId}/status', [AcademicAnalyticsController::class, 'setScheduleStatus'])->middleware('tenant.permission:academic.analytics.reports.manage')->whereNumber('scheduleId')->name('analytics.schedules.status');
             Route::put('/analytics/schedules/{scheduleId}', [AcademicAnalyticsController::class, 'updateSchedule'])->middleware('tenant.permission:academic.analytics.reports.manage')->whereNumber('scheduleId')->name('analytics.schedules.update');
@@ -474,6 +473,9 @@ Route::middleware('auth')->group(function (): void {
             Route::post('/analytics/reports', [AcademicAnalyticsController::class, 'storeReport'])->middleware('tenant.permission:academic.analytics.reports.manage')->name('analytics.reports.store');
             Route::get('/analytics/reports/{reportId}', [AcademicAnalyticsController::class, 'applyReport'])->middleware('tenant.permission:academic.analytics.view')->whereNumber('reportId')->name('analytics.reports.apply');
             Route::delete('/analytics/reports/{reportId}', [AcademicAnalyticsController::class, 'deleteReport'])->middleware('tenant.permission:academic.analytics.reports.manage')->whereNumber('reportId')->name('analytics.reports.delete');
+        });
+        Route::prefix('academics')->name('academics.')->middleware(['tenant.permission:academic.view', 'tenant.academic.scope', 'tenant.academic.feature'])->group(function (): void {
+            Route::get('/', AcademicDashboardController::class)->name('index');
             Route::get('/calendar', [AcademicCalendarController::class, 'index'])->name('calendar');
             Route::prefix('grades')->name('grades.')->middleware('tenant.permission:academic.grades.book.view')->group(function (): void {
                 Route::get('/', [GradebookController::class, 'index'])->name('index');

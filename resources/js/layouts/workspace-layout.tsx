@@ -183,9 +183,11 @@ export function WorkspaceLayout({ children, title, area }: WorkspaceLayoutProps)
                             )
                           : target === 'hr/operations'
                             ? currentTenant?.permissions.some((key) =>
-                                  ['hr.staff.view-own', 'hr.attendance.manage', 'hr.leave.manage'].includes(key),
+                                  ['hr.staff.view-own', 'hr.attendance.manage', 'hr.leave.manage'].includes(
+                                      key,
+                                  ),
                               )
-                          : currentTenant?.permissions.includes(permission),
+                            : currentTenant?.permissions.includes(permission),
               );
     const urlFor = (target: string) =>
         area === 'platform'

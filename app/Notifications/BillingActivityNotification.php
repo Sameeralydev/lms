@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Models\CommunicationsNotificationPreference;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
 
@@ -16,6 +17,13 @@ final class BillingActivityNotification extends Notification
     /** @return list<string> */
     public function via(object $notifiable): array
     {
+        $tenantId = isset($this->details['tenant_id']) ? (int) $this->details['tenant_id'] : 0;
+        $userId = method_exists($notifiable, 'getKey') ? (int) $notifiable->getKey() : 0;
+
+        if ($tenantId > 0 && $userId > 0 && ! CommunicationsNotificationPreference::allows($tenantId, $userId, 'billing')) {
+            return [];
+        }
+
         return ['database'];
     }
 

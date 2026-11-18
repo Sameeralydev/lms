@@ -73,7 +73,12 @@ export default function AcademicAnalytics({
     campuses: { id: number; name: string }[];
     filters: FilterSet;
     generated_at: string;
-    permissions: { export: boolean; manage_reports: boolean };
+    permissions: {
+        export: boolean;
+        academic_export: boolean;
+        manage_reports: boolean;
+        view_academic_metrics: boolean;
+    };
     saved_reports: { id: number; name: string; created_at: string | null }[];
     builder_report: BuilderReport;
     export_history: {
@@ -212,22 +217,24 @@ export default function AcademicAnalytics({
                             className="border-border bg-surface min-h-11 rounded-lg border px-3"
                         />
                     </label>
-                    <label className="grid gap-1 text-sm font-medium" htmlFor="analytics-metrics">
-                        Metrics <span className="text-text-muted font-normal">(leave empty for all)</span>
-                        <select
-                            id="analytics-metrics"
-                            name="metrics[]"
-                            multiple
-                            defaultValue={filters.metrics ?? []}
-                            className="border-border bg-surface min-h-24 rounded-lg border px-3 py-2"
-                        >
-                            {metric_options.map((metric) => (
-                                <option key={metric.key} value={metric.key}>
-                                    {metric.name}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
+                    {permissions.view_academic_metrics && (
+                        <label className="grid gap-1 text-sm font-medium" htmlFor="analytics-metrics">
+                            Metrics <span className="text-text-muted font-normal">(leave empty for all)</span>
+                            <select
+                                id="analytics-metrics"
+                                name="metrics[]"
+                                multiple
+                                defaultValue={filters.metrics ?? []}
+                                className="border-border bg-surface min-h-24 rounded-lg border px-3 py-2"
+                            >
+                                {metric_options.map((metric) => (
+                                    <option key={metric.key} value={metric.key}>
+                                        {metric.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                    )}
                     <div className="flex items-end gap-2">
                         <button
                             type="submit"
@@ -235,7 +242,7 @@ export default function AcademicAnalytics({
                         >
                             Apply filters
                         </button>
-                        {permissions.export && (
+                        {permissions.academic_export && (
                             <a
                                 href={exportHref}
                                 className="border-border hover:bg-surface-soft min-h-11 rounded-lg border px-4 py-3 text-sm font-semibold"
@@ -285,7 +292,7 @@ export default function AcademicAnalytics({
                 <form
                     method="get"
                     action={`/t/${tenant.slug}/academics/analytics`}
-                    className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 print:hidden"
+                    className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4 print:hidden"
                 >
                     {filters.campus_id !== null && (
                         <input type="hidden" name="campus_id" value={filters.campus_id} />
@@ -295,7 +302,7 @@ export default function AcademicAnalytics({
                     {filters.metrics?.map((metric) => (
                         <input key={metric} type="hidden" name="metrics[]" value={metric} />
                     ))}
-                    <label className="grid gap-1 text-sm font-medium" htmlFor="report-dataset">
+                    <label className="grid min-w-0 gap-1 text-sm font-medium" htmlFor="report-dataset">
                         Data source
                         <select
                             id="report-dataset"
@@ -318,7 +325,7 @@ export default function AcademicAnalytics({
                                 );
                                 setBuilderSort('total');
                             }}
-                            className="border-border bg-surface min-h-11 rounded-lg border px-3"
+                            className="border-border bg-surface min-h-11 w-full min-w-0 rounded-lg border px-3"
                         >
                             {Object.entries(builder_report.definitions).map(([key, item]) => (
                                 <option key={key} value={key}>
@@ -327,14 +334,14 @@ export default function AcademicAnalytics({
                             ))}
                         </select>
                     </label>
-                    <label className="grid gap-1 text-sm font-medium" htmlFor="report-measure">
+                    <label className="grid min-w-0 gap-1 text-sm font-medium" htmlFor="report-measure">
                         Measure
                         <select
                             id="report-measure"
                             name="report_measure"
                             value={builderMeasure}
                             onChange={(event) => setBuilderMeasure(event.target.value)}
-                            className="border-border bg-surface min-h-11 rounded-lg border px-3"
+                            className="border-border bg-surface min-h-11 w-full min-w-0 rounded-lg border px-3"
                         >
                             {Object.entries(builder_report.definitions[builderDataset]?.measures ?? {}).map(
                                 ([key, label]) => (
@@ -348,7 +355,7 @@ export default function AcademicAnalytics({
                     {[0, 1].map((index) => (
                         <label
                             key={index}
-                            className="grid gap-1 text-sm font-medium"
+                            className="grid min-w-0 gap-1 text-sm font-medium"
                             htmlFor={`report-dimension-${index}`}
                         >
                             Group by {index + 1}
@@ -364,7 +371,7 @@ export default function AcademicAnalytics({
                                     });
                                     setBuilderSort('total');
                                 }}
-                                className="border-border bg-surface min-h-11 rounded-lg border px-3"
+                                className="border-border bg-surface min-h-11 w-full min-w-0 rounded-lg border px-3"
                             >
                                 <option value="">
                                     {index === 0 ? 'Choose a dimension' : 'No second grouping'}
@@ -380,7 +387,7 @@ export default function AcademicAnalytics({
                         </label>
                     ))}
                     {builder_report.definitions[builderDataset]?.status_filter && (
-                        <label className="grid gap-1 text-sm font-medium" htmlFor="report-status">
+                        <label className="grid min-w-0 gap-1 text-sm font-medium" htmlFor="report-status">
                             Status filter
                             <input
                                 id="report-status"
@@ -388,7 +395,7 @@ export default function AcademicAnalytics({
                                 maxLength={32}
                                 value={builderStatus}
                                 onChange={(event) => setBuilderStatus(event.target.value)}
-                                className="border-border bg-surface min-h-11 rounded-lg border px-3"
+                                className="border-border bg-surface min-h-11 w-full min-w-0 rounded-lg border px-3"
                                 placeholder="Any status"
                             />
                         </label>
@@ -397,7 +404,7 @@ export default function AcademicAnalytics({
                         ([key, label]) => (
                             <label
                                 key={key}
-                                className="grid gap-1 text-sm font-medium"
+                                className="grid min-w-0 gap-1 text-sm font-medium"
                                 htmlFor={`report-filter-${key}`}
                             >
                                 {label}
@@ -406,29 +413,29 @@ export default function AcademicAnalytics({
                                     name={`report_filters[${key}]`}
                                     maxLength={100}
                                     defaultValue={builder_report.filters[key] ?? ''}
-                                    className="border-border bg-surface min-h-11 rounded-lg border px-3"
+                                    className="border-border bg-surface min-h-11 w-full min-w-0 rounded-lg border px-3"
                                 />
                             </label>
                         ),
                     )}
-                    <label className="grid gap-1 text-sm font-medium" htmlFor="report-search">
+                    <label className="grid min-w-0 gap-1 text-sm font-medium" htmlFor="report-search">
                         Search grouped values
                         <input
                             id="report-search"
                             name="report_search"
                             maxLength={80}
                             defaultValue={builder_report.search}
-                            className="border-border bg-surface min-h-11 rounded-lg border px-3"
+                            className="border-border bg-surface min-h-11 w-full min-w-0 rounded-lg border px-3"
                         />
                     </label>
-                    <label className="grid gap-1 text-sm font-medium" htmlFor="report-sort">
+                    <label className="grid min-w-0 gap-1 text-sm font-medium" htmlFor="report-sort">
                         Sort by
                         <select
                             id="report-sort"
                             name="report_sort"
                             value={builderSort}
                             onChange={(event) => setBuilderSort(event.target.value)}
-                            className="border-border bg-surface min-h-11 rounded-lg border px-3"
+                            className="border-border bg-surface min-h-11 w-full min-w-0 rounded-lg border px-3"
                         >
                             <option value="total">Record count</option>
                             {builder_report.dimensions.map((dimension) => (
@@ -438,13 +445,13 @@ export default function AcademicAnalytics({
                             ))}
                         </select>
                     </label>
-                    <label className="grid gap-1 text-sm font-medium" htmlFor="report-direction">
+                    <label className="grid min-w-0 gap-1 text-sm font-medium" htmlFor="report-direction">
                         Direction
                         <select
                             id="report-direction"
                             name="report_direction"
                             defaultValue={builder_report.direction}
-                            className="border-border bg-surface min-h-11 rounded-lg border px-3"
+                            className="border-border bg-surface min-h-11 w-full min-w-0 rounded-lg border px-3"
                         >
                             <option value="desc">Descending</option>
                             <option value="asc">Ascending</option>
@@ -1088,118 +1095,128 @@ export default function AcademicAnalytics({
                 )}
             </section>
 
-            <section aria-label="Academic KPI summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                {metrics.map((metric) => (
-                    <MetricCard
-                        key={metric.key}
-                        label={metric.name}
-                        value={metric.display}
-                        detail={metric.definition}
-                    />
-                ))}
-            </section>
-
-            <div className="mt-6 grid min-w-0 grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.6fr)]">
+            {permissions.view_academic_metrics && (
                 <section
-                    className="border-border bg-surface shadow-card min-w-0 rounded-2xl border p-5"
-                    aria-labelledby="enrollment-trend-title"
+                    aria-label="Academic KPI summary"
+                    className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
                 >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                            <h2
-                                id="enrollment-trend-title"
-                                className="text-text-primary text-base font-semibold"
-                            >
-                                Confirmed enrollment activity
-                            </h2>
-                            <p className="text-text-secondary mt-1 text-sm">
-                                Daily confirmed registrations in the selected scope.
-                            </p>
+                    {metrics.map((metric) => (
+                        <MetricCard
+                            key={metric.key}
+                            label={metric.name}
+                            value={metric.display}
+                            detail={metric.definition}
+                        />
+                    ))}
+                </section>
+            )}
+
+            {permissions.view_academic_metrics && (
+                <div className="mt-6 grid min-w-0 grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.6fr)]">
+                    <section
+                        className="border-border bg-surface shadow-card min-w-0 rounded-2xl border p-5"
+                        aria-labelledby="enrollment-trend-title"
+                    >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <h2
+                                    id="enrollment-trend-title"
+                                    className="text-text-primary text-base font-semibold"
+                                >
+                                    Confirmed enrollment activity
+                                </h2>
+                                <p className="text-text-secondary mt-1 text-sm">
+                                    Daily confirmed registrations in the selected scope.
+                                </p>
+                            </div>
+                            <span className="text-text-muted text-xs">Source: course enrollments</span>
                         </div>
-                        <span className="text-text-muted text-xs">Source: course enrollments</span>
-                    </div>
-                    {trend.some((point) => point.value > 0) ? (
-                        <div
-                            className="mt-5 overflow-x-auto"
-                            role="region"
-                            aria-label="Enrollment trend chart"
-                            tabIndex={0}
-                        >
+                        {trend.some((point) => point.value > 0) ? (
                             <div
-                                className="border-border flex min-w-[36rem] items-end gap-1 border-b px-1 pb-2"
-                                role="img"
-                                aria-label={`Confirmed enrollments by day; peak ${maxValue}`}
+                                className="mt-5 overflow-x-auto"
+                                role="region"
+                                aria-label="Enrollment trend chart"
+                                tabIndex={0}
                             >
-                                {trend.map((point) => (
-                                    <div
-                                        key={point.date}
-                                        className="group flex min-w-0 flex-1 flex-col items-center justify-end gap-1"
-                                        title={`${point.date}: ${point.value}`}
-                                    >
-                                        <span className="text-text-muted text-[10px]">
-                                            {point.value || ''}
-                                        </span>
-                                        <span
-                                            className="bg-primary w-full max-w-5 rounded-t-sm"
-                                            style={{
-                                                height: `${Math.max(3, (point.value / maxValue) * 120)}px`,
-                                            }}
-                                            aria-hidden="true"
-                                        />
-                                    </div>
-                                ))}
+                                <div
+                                    className="border-border flex min-w-[36rem] items-end gap-1 border-b px-1 pb-2"
+                                    role="img"
+                                    aria-label={`Confirmed enrollments by day; peak ${maxValue}`}
+                                >
+                                    {trend.map((point) => (
+                                        <div
+                                            key={point.date}
+                                            className="group flex min-w-0 flex-1 flex-col items-center justify-end gap-1"
+                                            title={`${point.date}: ${point.value}`}
+                                        >
+                                            <span className="text-text-muted text-[10px]">
+                                                {point.value || ''}
+                                            </span>
+                                            <span
+                                                className="bg-primary w-full max-w-5 rounded-t-sm"
+                                                style={{
+                                                    height: `${Math.max(3, (point.value / maxValue) * 120)}px`,
+                                                }}
+                                                aria-hidden="true"
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="text-text-muted mt-2 flex justify-between text-xs">
+                                    <span>{trend[0]?.date}</span>
+                                    <span>{trend.at(-1)?.date}</span>
+                                </div>
                             </div>
-                            <div className="text-text-muted mt-2 flex justify-between text-xs">
-                                <span>{trend[0]?.date}</span>
-                                <span>{trend.at(-1)?.date}</span>
-                            </div>
-                        </div>
-                    ) : (
-                        <p className="text-text-secondary bg-surface-soft mt-5 rounded-xl px-4 py-8 text-center text-sm">
-                            No confirmed enrollment activity in this date range.
-                        </p>
-                    )}
-                    <table className="sr-only">
-                        <caption>Daily confirmed enrollment activity</caption>
-                        <thead>
-                            <tr>
-                                <th scope="col">Date</th>
-                                <th scope="col">Confirmed enrollments</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {trend.map((point) => (
-                                <tr key={point.date}>
-                                    <th scope="row">{point.date}</th>
-                                    <td>{point.value}</td>
+                        ) : (
+                            <p className="text-text-secondary bg-surface-soft mt-5 rounded-xl px-4 py-8 text-center text-sm">
+                                No confirmed enrollment activity in this date range.
+                            </p>
+                        )}
+                        <table className="sr-only">
+                            <caption>Daily confirmed enrollment activity</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">Date</th>
+                                    <th scope="col">Confirmed enrollments</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </section>
+                            </thead>
+                            <tbody>
+                                {trend.map((point) => (
+                                    <tr key={point.date}>
+                                        <th scope="row">{point.date}</th>
+                                        <td>{point.value}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </section>
 
-                <section
-                    className="border-border bg-surface shadow-card min-w-0 rounded-2xl border p-5"
-                    aria-labelledby="metric-definitions-title"
-                >
-                    <h2 id="metric-definitions-title" className="text-text-primary text-base font-semibold">
-                        Metric definitions
-                    </h2>
-                    <ul className="divide-border mt-3 divide-y">
-                        {metrics.map((metric) => (
-                            <li key={metric.key} className="py-3 first:pt-0 last:pb-0">
-                                <p className="text-text-primary text-sm font-medium">
-                                    {metric.name}: {metric.display}
-                                </p>
-                                <p className="text-text-secondary mt-1 text-xs">{metric.formula}</p>
-                                <p className="text-text-muted mt-1 text-xs">
-                                    Date basis: {metric.date_basis} · Sources: {metric.sources.join(', ')}
-                                </p>
-                            </li>
-                        ))}
-                    </ul>
-                </section>
-            </div>
+                    <section
+                        className="border-border bg-surface shadow-card min-w-0 rounded-2xl border p-5"
+                        aria-labelledby="metric-definitions-title"
+                    >
+                        <h2
+                            id="metric-definitions-title"
+                            className="text-text-primary text-base font-semibold"
+                        >
+                            Metric definitions
+                        </h2>
+                        <ul className="divide-border mt-3 divide-y">
+                            {metrics.map((metric) => (
+                                <li key={metric.key} className="py-3 first:pt-0 last:pb-0">
+                                    <p className="text-text-primary text-sm font-medium">
+                                        {metric.name}: {metric.display}
+                                    </p>
+                                    <p className="text-text-secondary mt-1 text-xs">{metric.formula}</p>
+                                    <p className="text-text-muted mt-1 text-xs">
+                                        Date basis: {metric.date_basis} · Sources: {metric.sources.join(', ')}
+                                    </p>
+                                </li>
+                            ))}
+                        </ul>
+                    </section>
+                </div>
+            )}
 
             <nav aria-label="Related academic workspaces" className="mt-6 flex flex-wrap gap-2 text-sm">
                 <Link

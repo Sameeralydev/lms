@@ -150,7 +150,134 @@ final class AcademicReportBuilder
                 'date' => 'applications.created_at',
                 'filters' => ['status' => ['label' => 'Fee status', 'expression' => 'fee_obligations.status'], 'currency' => ['label' => 'Currency', 'expression' => 'fee_obligations.currency']],
             ],
+            'billing_invoices' => [
+                'label' => 'Issued billing invoices',
+                'permission' => 'billing.reports.view',
+                'dimensions' => ['status' => 'Invoice status', 'campus' => 'Campus', 'currency' => 'Currency', 'issued_date' => 'Issue date'],
+                'measures' => [
+                    'records' => ['label' => 'Invoices', 'expression' => 'COUNT(DISTINCT invoices.id)'],
+                    'billed_amount' => ['label' => 'Net billed amount', 'expression' => "SUM(CASE WHEN invoices.status = 'cancelled' THEN 0 ELSE invoices.adjusted_total END)"],
+                    'outstanding_amount' => ['label' => 'Current outstanding amount', 'expression' => 'SUM(invoices.outstanding_amount)'],
+                    'paid_amount' => ['label' => 'Applied payment amount', 'expression' => 'SUM(invoices.paid_amount)'],
+                ],
+                'status' => 'invoices.status',
+                'date' => 'invoices.issued_at',
+                'filters' => ['status' => ['label' => 'Invoice status', 'expression' => 'invoices.status'], 'currency' => ['label' => 'Currency', 'expression' => 'invoices.currency']],
+            ],
+            'billing_confirmed_collections' => [
+                'label' => 'Net confirmed collections',
+                'permission' => 'billing.reports.view',
+                'dimensions' => ['campus' => 'Campus', 'currency' => 'Currency', 'method' => 'Collection method', 'confirmed_date' => 'Confirmation date'],
+                'measures' => [
+                    'records' => ['label' => 'Confirmed payments', 'expression' => 'COUNT(DISTINCT payments.id)'],
+                    'net_amount' => ['label' => 'Net confirmed amount', 'expression' => "SUM(payments.amount - COALESCE((SELECT SUM(refunds.amount) FROM billing_payment_refunds as refunds WHERE refunds.tenant_id = payments.tenant_id AND refunds.payment_id = payments.id AND refunds.status = 'refunded'), 0))"],
+                ],
+                'status' => null,
+                'date' => 'payments.confirmed_at',
+                'filters' => ['currency' => ['label' => 'Currency', 'expression' => 'payments.currency'], 'method' => ['label' => 'Collection method', 'expression' => 'payments.method']],
+            ],
+            'billing_assignments' => [
+                'label' => 'Fee assignments (not invoices)',
+                'permission' => 'billing.reports.view',
+                'dimensions' => ['status' => 'Assignment status', 'campus' => 'Campus', 'source' => 'Assignment source', 'effective_date' => 'Effective date'],
+                'measures' => ['records' => ['label' => 'Fee assignments', 'expression' => 'COUNT(DISTINCT assignments.id)']],
+                'status' => 'assignments.status',
+                'date' => 'assignments.effective_from',
+                'filters' => ['status' => ['label' => 'Assignment status', 'expression' => 'assignments.status'], 'source' => ['label' => 'Assignment source', 'expression' => 'assignments.source']],
+            ],
+            'billing_concessions' => [
+                'label' => 'Concession requests and decisions',
+                'permission' => 'billing.reports.view',
+                'dimensions' => ['status' => 'Concession status', 'campus' => 'Campus', 'kind' => 'Concession type', 'effective_date' => 'Effective date'],
+                'measures' => ['records' => ['label' => 'Concession records', 'expression' => 'COUNT(DISTINCT concessions.id)']],
+                'status' => 'concessions.status',
+                'date' => 'concessions.effective_from',
+                'filters' => ['status' => ['label' => 'Concession status', 'expression' => 'concessions.status'], 'kind' => ['label' => 'Concession type', 'expression' => 'concessions.kind']],
+            ],
+            'billing_installments' => [
+                'label' => 'Published installment schedules (planned amounts)',
+                'permission' => 'billing.reports.view',
+                'dimensions' => ['status' => 'Schedule item status', 'campus' => 'Campus', 'currency' => 'Currency', 'due_date' => 'Due date'],
+                'measures' => [
+                    'records' => ['label' => 'Installment schedule items', 'expression' => 'COUNT(DISTINCT installments.id)'],
+                    'scheduled_amount' => ['label' => 'Scheduled amount (not settlement)', 'expression' => "SUM(CASE WHEN installments.status = 'cancelled' THEN 0 ELSE installments.amount END)"],
+                ],
+                'status' => 'installments.status',
+                'date' => 'installments.due_on',
+                'filters' => ['status' => ['label' => 'Schedule item status', 'expression' => 'installments.status'], 'currency' => ['label' => 'Currency', 'expression' => 'invoices.currency']],
+            ],
+            'billing_adjustments' => [
+                'label' => 'Billing adjustment requests and postings',
+                'permission' => 'billing.reports.view',
+                'dimensions' => ['status' => 'Adjustment status', 'kind' => 'Adjustment type', 'campus' => 'Campus', 'currency' => 'Currency', 'request_date' => 'Request date'],
+                'measures' => [
+                    'records' => ['label' => 'Adjustment records', 'expression' => 'COUNT(DISTINCT adjustments.id)'],
+                    'posted_amount' => ['label' => 'Posted adjustment amount (debit/credit separated by type)', 'expression' => "SUM(CASE WHEN adjustments.status = 'posted' THEN adjustments.amount ELSE 0 END)"],
+                ],
+                'status' => 'adjustments.status',
+                'date' => 'adjustments.created_at',
+                'filters' => ['status' => ['label' => 'Adjustment status', 'expression' => 'adjustments.status'], 'kind' => ['label' => 'Adjustment type', 'expression' => 'adjustments.kind'], 'currency' => ['label' => 'Currency', 'expression' => 'adjustments.currency']],
+            ],
+            'billing_payment_reviews' => [
+                'label' => 'Payment submissions and verification (not collection totals)',
+                'permission' => 'billing.reports.view',
+                'dimensions' => ['status' => 'Payment status', 'method' => 'Payment method', 'campus' => 'Campus', 'currency' => 'Currency', 'recorded_date' => 'Recorded date'],
+                'measures' => [
+                    'records' => ['label' => 'Payment records', 'expression' => 'COUNT(DISTINCT payments.id)'],
+                    'submitted_amount' => ['label' => 'Recorded payment amount (verification state retained)', 'expression' => 'SUM(payments.amount)'],
+                ],
+                'status' => 'payments.status',
+                'date' => 'payments.recorded_at',
+                'filters' => ['status' => ['label' => 'Payment status', 'expression' => 'payments.status'], 'method' => ['label' => 'Payment method', 'expression' => 'payments.method'], 'currency' => ['label' => 'Currency', 'expression' => 'payments.currency']],
+            ],
+            'billing_refunds' => [
+                'label' => 'Refund requests and execution',
+                'permission' => 'billing.reports.view',
+                'dimensions' => ['status' => 'Refund status', 'campus' => 'Campus', 'currency' => 'Currency', 'requested_date' => 'Request date'],
+                'measures' => [
+                    'records' => ['label' => 'Refund records', 'expression' => 'COUNT(DISTINCT refunds.id)'],
+                    'refunded_amount' => ['label' => 'Executed refund amount', 'expression' => "SUM(CASE WHEN refunds.status = 'refunded' THEN refunds.amount ELSE 0 END)"],
+                ],
+                'status' => 'refunds.status',
+                'date' => 'refunds.requested_at',
+                'filters' => ['status' => ['label' => 'Refund status', 'expression' => 'refunds.status'], 'currency' => ['label' => 'Currency', 'expression' => 'payments.currency']],
+            ],
+            'billing_reversals' => [
+                'label' => 'Payment reversal requests and execution',
+                'permission' => 'billing.reports.view',
+                'dimensions' => ['status' => 'Reversal status', 'campus' => 'Campus', 'currency' => 'Currency', 'requested_date' => 'Request date'],
+                'measures' => [
+                    'records' => ['label' => 'Reversal records', 'expression' => 'COUNT(DISTINCT reversals.id)'],
+                    'reversed_amount' => ['label' => 'Executed reversal amount', 'expression' => "SUM(CASE WHEN reversals.status = 'reversed' THEN payments.amount ELSE 0 END)"],
+                ],
+                'status' => 'reversals.status',
+                'date' => 'reversals.requested_at',
+                'filters' => ['status' => ['label' => 'Reversal status', 'expression' => 'reversals.status'], 'currency' => ['label' => 'Currency', 'expression' => 'payments.currency']],
+            ],
+            'billing_unapplied_credits' => [
+                'label' => 'Unapplied confirmed student credits',
+                'permission' => 'billing.reports.view',
+                'dimensions' => ['campus' => 'Campus', 'currency' => 'Currency', 'method' => 'Payment method', 'confirmed_date' => 'Confirmation date'],
+                'measures' => [
+                    'records' => ['label' => 'Payments with unapplied credit', 'expression' => 'COUNT(DISTINCT payments.id)'],
+                    'credit_amount' => ['label' => 'Current unapplied credit', 'expression' => 'SUM(payments.unapplied_amount)'],
+                ],
+                'status' => null,
+                'date' => 'payments.confirmed_at',
+                'filters' => ['currency' => ['label' => 'Currency', 'expression' => 'payments.currency'], 'method' => ['label' => 'Payment method', 'expression' => 'payments.method']],
+            ],
         ];
+    }
+
+    /** @return list<string> */
+    public static function allowedMeasures(): array
+    {
+        $measures = [];
+        foreach (self::definitions() as $definition) {
+            array_push($measures, ...array_keys($definition['measures']));
+        }
+
+        return array_values(array_unique($measures));
     }
 
     /** @return array<string,array{label:string,permission:string,dimensions:array<string,string>,measures:array<string,array{label:string,expression:string}>,status:string|null,date:string,filters:array<string,array{label:string,expression:string}>}> */
@@ -184,6 +311,11 @@ final class AcademicReportBuilder
         foreach ($dimensions as $dimension) {
             abort_unless(isset($definition['dimensions'][$dimension]), 422, 'One or more report dimensions are not available for this dataset.');
         }
+        if ($this->requiresCurrencyDimension($dataset, $measure)) {
+            if (! in_array('currency', $dimensions, true)) {
+                abort(422, 'Financial amounts must be grouped by currency.');
+            }
+        }
 
         $campusId = $this->campusScope($membership, isset($input['campus_id']) ? (int) $input['campus_id'] : null);
         $from = $input['from'] ?? null;
@@ -206,11 +338,16 @@ final class AcademicReportBuilder
         if ($status !== null) {
             $base->where($definition['status'], $status);
         }
-        $fieldFilters = $input['filters'] ?? [];
-        abort_unless(is_array($fieldFilters) && count($fieldFilters) <= 6, 422, 'Choose supported report filters.');
-        foreach ($fieldFilters as $field => $value) {
+        $requestedFilters = $input['filters'] ?? [];
+        abort_unless(is_array($requestedFilters) && count($requestedFilters) <= 6, 422, 'Choose supported report filters.');
+        $fieldFilters = [];
+        foreach ($requestedFilters as $field => $value) {
             abort_unless(is_string($field) && isset($definition['filters'][$field]), 422, 'One or more report filters are not available for this dataset.');
+            if ($value === null || $value === '') {
+                continue;
+            }
             abort_unless(is_string($value) && mb_strlen($value) <= 100, 422, 'Report filter values must be text up to 100 characters.');
+            $fieldFilters[$field] = $value;
             $base->where($definition['filters'][$field]['expression'], $value);
         }
 
@@ -287,6 +424,11 @@ final class AcademicReportBuilder
         abort_unless($membership->hasPermission($definition['permission']), 403, 'You do not have permission to inspect this report source.');
         $measure = (string) ($input['measure'] ?? 'records');
         abort_unless(isset($definition['measures'][$measure]), 422, 'Choose a supported measure for this dataset.');
+        if ($this->requiresCurrencyDimension($dataset, $measure)) {
+            if ($dimension !== 'currency') {
+                abort(422, 'Financial amount drill-down must retain its currency dimension.');
+            }
+        }
         if ($measure === 'unique_learners') {
             abort_unless(in_array($dataset, ['enrollments', 'attendance', 'assignment_submissions', 'quiz_results', 'gpa_snapshots'], true), 422, 'Learner drill-down is not available for this dataset.');
         }
@@ -330,11 +472,22 @@ final class AcademicReportBuilder
             'academic_records' => ['issues.id as record_id', 'issues.record_type as status', 'issues.issued_at as occurred_at', DB::raw("COALESCE(campuses.name, 'Unassigned') as campus")],
             'gpa_snapshots' => ['snapshots.id as record_id', 'snapshots.calculation_type as status', 'snapshots.calculated_at as occurred_at', DB::raw("COALESCE(placement_campuses.name, campuses.name, 'Unassigned') as campus")],
             'admission_fees' => ['fee_obligations.id as record_id', 'fee_obligations.status as status', 'applications.created_at as occurred_at', DB::raw("COALESCE(campuses.name, 'Unassigned') as campus")],
+            'billing_invoices' => ['invoices.id as record_id', 'invoices.status as status', 'invoices.issued_at as occurred_at', DB::raw("COALESCE(campuses.name, 'Unassigned') as campus")],
+            'billing_confirmed_collections' => ['payments.id as record_id', 'payments.status as status', 'payments.confirmed_at as occurred_at', DB::raw("COALESCE(campuses.name, 'Unassigned') as campus")],
             default => throw new \LogicException('Unregistered analytics dataset.'),
         };
         $valueExpression = match ($measure) {
             'average_gpa' => 'snapshots.gpa',
-            'billed_amount' => 'fee_obligations.amount',
+            'billed_amount' => $dataset === 'billing_invoices' ? 'invoices.adjusted_total' : 'fee_obligations.amount',
+            'outstanding_amount' => 'invoices.outstanding_amount',
+            'paid_amount' => 'invoices.paid_amount',
+            'scheduled_amount' => "CASE WHEN installments.status = 'cancelled' THEN 0 ELSE installments.amount END",
+            'posted_amount' => "CASE WHEN adjustments.status = 'posted' THEN adjustments.amount ELSE 0 END",
+            'submitted_amount' => 'payments.amount',
+            'refunded_amount' => "CASE WHEN refunds.status = 'refunded' THEN refunds.amount ELSE 0 END",
+            'reversed_amount' => "CASE WHEN reversals.status = 'reversed' THEN payments.amount ELSE 0 END",
+            'credit_amount' => 'payments.unapplied_amount',
+            'net_amount' => "payments.amount - COALESCE((SELECT SUM(refunds.amount) FROM billing_payment_refunds as refunds WHERE refunds.tenant_id = payments.tenant_id AND refunds.payment_id = payments.id AND refunds.status = 'refunded'), 0)",
             default => '1',
         };
         $columns[] = DB::raw($valueExpression.' as measure_value');
@@ -419,6 +572,43 @@ final class AcademicReportBuilder
                 ->join('admission_intakes as intakes', fn ($join) => $join->on('intakes.id', '=', 'applications.intake_id')->on('intakes.tenant_id', '=', 'applications.tenant_id')->on('intakes.institution_id', '=', 'applications.institution_id'))
                 ->leftJoin('campuses', fn ($join) => $join->on('campuses.id', '=', 'intakes.campus_id')->on('campuses.tenant_id', '=', 'applications.tenant_id')->on('campuses.institution_id', '=', 'applications.institution_id'))
                 ->where('fee_obligations.tenant_id', $tenantId)->where('applications.institution_id', $institutionId),
+            'billing_invoices' => DB::table('billing_invoices as invoices')
+                ->leftJoin('campuses', fn ($join) => $join->on('campuses.id', '=', 'invoices.campus_id')->on('campuses.tenant_id', '=', 'invoices.tenant_id')->on('campuses.institution_id', '=', 'invoices.institution_id'))
+                ->where('invoices.tenant_id', $tenantId)->where('invoices.institution_id', $institutionId),
+            'billing_confirmed_collections' => DB::table('billing_payments as payments')
+                ->leftJoin('campuses', fn ($join) => $join->on('campuses.id', '=', 'payments.campus_id')->on('campuses.tenant_id', '=', 'payments.tenant_id')->on('campuses.institution_id', '=', 'payments.institution_id'))
+                ->where('payments.tenant_id', $tenantId)->where('payments.institution_id', $institutionId)->where('payments.status', 'confirmed')
+                ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('billing_payment_reversals as reversals')->whereColumn('reversals.tenant_id', 'payments.tenant_id')->whereColumn('reversals.payment_id', 'payments.id')->where('reversals.status', 'reversed')),
+            'billing_assignments' => DB::table('billing_fee_assignments as assignments')
+                ->join('billing_fee_structures as structures', fn ($join) => $join->on('structures.id', '=', 'assignments.fee_structure_id')->on('structures.tenant_id', '=', 'assignments.tenant_id')->on('structures.institution_id', '=', 'assignments.institution_id'))
+                ->leftJoin('campuses', fn ($join) => $join->on('campuses.id', '=', 'assignments.campus_id')->on('campuses.tenant_id', '=', 'assignments.tenant_id')->on('campuses.institution_id', '=', 'assignments.institution_id'))
+                ->where('assignments.tenant_id', $tenantId)->where('assignments.institution_id', $institutionId),
+            'billing_concessions' => DB::table('billing_concessions as concessions')
+                ->leftJoin('campuses', fn ($join) => $join->on('campuses.id', '=', 'concessions.campus_id')->on('campuses.tenant_id', '=', 'concessions.tenant_id')->on('campuses.institution_id', '=', 'concessions.institution_id'))
+                ->where('concessions.tenant_id', $tenantId)->where('concessions.institution_id', $institutionId),
+            'billing_installments' => DB::table('billing_installments as installments')
+                ->join('billing_installment_plans as plans', fn ($join) => $join->on('plans.id', '=', 'installments.plan_id')->on('plans.tenant_id', '=', 'installments.tenant_id'))
+                ->join('billing_invoices as invoices', fn ($join) => $join->on('invoices.id', '=', 'plans.invoice_id')->on('invoices.tenant_id', '=', 'plans.tenant_id'))
+                ->leftJoin('campuses', fn ($join) => $join->on('campuses.id', '=', 'invoices.campus_id')->on('campuses.tenant_id', '=', 'invoices.tenant_id')->on('campuses.institution_id', '=', 'invoices.institution_id'))
+                ->where('installments.tenant_id', $tenantId)->where('invoices.institution_id', $institutionId)->where('plans.status', 'published'),
+            'billing_adjustments' => DB::table('billing_adjustments as adjustments')
+                ->join('billing_invoices as invoices', fn ($join) => $join->on('invoices.id', '=', 'adjustments.invoice_id')->on('invoices.tenant_id', '=', 'adjustments.tenant_id'))
+                ->leftJoin('campuses', fn ($join) => $join->on('campuses.id', '=', 'invoices.campus_id')->on('campuses.tenant_id', '=', 'invoices.tenant_id')->on('campuses.institution_id', '=', 'invoices.institution_id'))
+                ->where('adjustments.tenant_id', $tenantId)->where('invoices.institution_id', $institutionId),
+            'billing_payment_reviews' => DB::table('billing_payments as payments')
+                ->leftJoin('campuses', fn ($join) => $join->on('campuses.id', '=', 'payments.campus_id')->on('campuses.tenant_id', '=', 'payments.tenant_id')->on('campuses.institution_id', '=', 'payments.institution_id'))
+                ->where('payments.tenant_id', $tenantId)->where('payments.institution_id', $institutionId),
+            'billing_refunds' => DB::table('billing_payment_refunds as refunds')
+                ->join('billing_payments as payments', fn ($join) => $join->on('payments.id', '=', 'refunds.payment_id')->on('payments.tenant_id', '=', 'refunds.tenant_id'))
+                ->leftJoin('campuses', fn ($join) => $join->on('campuses.id', '=', 'payments.campus_id')->on('campuses.tenant_id', '=', 'payments.tenant_id')->on('campuses.institution_id', '=', 'payments.institution_id'))
+                ->where('refunds.tenant_id', $tenantId)->where('payments.institution_id', $institutionId),
+            'billing_reversals' => DB::table('billing_payment_reversals as reversals')
+                ->join('billing_payments as payments', fn ($join) => $join->on('payments.id', '=', 'reversals.payment_id')->on('payments.tenant_id', '=', 'reversals.tenant_id'))
+                ->leftJoin('campuses', fn ($join) => $join->on('campuses.id', '=', 'payments.campus_id')->on('campuses.tenant_id', '=', 'payments.tenant_id')->on('campuses.institution_id', '=', 'payments.institution_id'))
+                ->where('reversals.tenant_id', $tenantId)->where('payments.institution_id', $institutionId),
+            'billing_unapplied_credits' => DB::table('billing_payments as payments')
+                ->leftJoin('campuses', fn ($join) => $join->on('campuses.id', '=', 'payments.campus_id')->on('campuses.tenant_id', '=', 'payments.tenant_id')->on('campuses.institution_id', '=', 'payments.institution_id'))
+                ->where('payments.tenant_id', $tenantId)->where('payments.institution_id', $institutionId)->where('payments.status', 'confirmed')->where('payments.unapplied_amount', '>', 0),
             default => throw new \LogicException('Unregistered analytics dataset.'),
         };
     }
@@ -440,6 +630,16 @@ final class AcademicReportBuilder
             'exam_results' => ['status' => 'results.status', 'outcome' => 'results.outcome', 'campus' => 'campuses.name', 'date' => 'DATE(results.released_at)'],
             'academic_records' => ['type' => 'issues.record_type', 'campus' => "COALESCE(campuses.name, 'Unassigned')", 'date' => 'DATE(issues.issued_at)'],
             'admission_fees' => ['status' => 'fee_obligations.status', 'campus' => "COALESCE(campuses.name, 'Unassigned')", 'currency' => 'fee_obligations.currency', 'date' => 'DATE(applications.created_at)'],
+            'billing_invoices' => ['status' => 'invoices.status', 'campus' => "COALESCE(campuses.name, 'Unassigned')", 'currency' => 'invoices.currency', 'issued_date' => 'DATE(invoices.issued_at)'],
+            'billing_confirmed_collections' => ['campus' => "COALESCE(campuses.name, 'Unassigned')", 'currency' => 'payments.currency', 'method' => 'payments.method', 'confirmed_date' => 'DATE(payments.confirmed_at)'],
+            'billing_assignments' => ['status' => 'assignments.status', 'campus' => "COALESCE(campuses.name, 'Unassigned')", 'source' => 'assignments.source', 'effective_date' => 'DATE(assignments.effective_from)'],
+            'billing_concessions' => ['status' => 'concessions.status', 'campus' => "COALESCE(campuses.name, 'Unassigned')", 'kind' => 'concessions.kind', 'effective_date' => 'DATE(concessions.effective_from)'],
+            'billing_installments' => ['status' => 'installments.status', 'campus' => "COALESCE(campuses.name, 'Unassigned')", 'currency' => 'invoices.currency', 'due_date' => 'DATE(installments.due_on)'],
+            'billing_adjustments' => ['status' => 'adjustments.status', 'kind' => 'adjustments.kind', 'campus' => "COALESCE(campuses.name, 'Unassigned')", 'currency' => 'adjustments.currency', 'request_date' => 'DATE(adjustments.created_at)'],
+            'billing_payment_reviews' => ['status' => 'payments.status', 'method' => 'payments.method', 'campus' => "COALESCE(campuses.name, 'Unassigned')", 'currency' => 'payments.currency', 'recorded_date' => 'DATE(payments.recorded_at)'],
+            'billing_refunds' => ['status' => 'refunds.status', 'campus' => "COALESCE(campuses.name, 'Unassigned')", 'currency' => 'payments.currency', 'requested_date' => 'DATE(refunds.requested_at)'],
+            'billing_reversals' => ['status' => 'reversals.status', 'campus' => "COALESCE(campuses.name, 'Unassigned')", 'currency' => 'payments.currency', 'requested_date' => 'DATE(reversals.requested_at)'],
+            'billing_unapplied_credits' => ['campus' => "COALESCE(campuses.name, 'Unassigned')", 'currency' => 'payments.currency', 'method' => 'payments.method', 'confirmed_date' => 'DATE(payments.confirmed_at)'],
         ];
 
         return $expressions[$dataset][$dimension] ?? throw new \LogicException('Unregistered analytics dimension.');
@@ -448,6 +648,22 @@ final class AcademicReportBuilder
     private function campusIdExpression(string $dataset): string
     {
         return $dataset === 'students' ? 'COALESCE(placement_campuses.id, students.home_campus_id)' : 'campuses.id';
+    }
+
+    private function requiresCurrencyDimension(string $dataset, string $measure): bool
+    {
+        $currencySensitiveMeasures = [
+            'billing_invoices' => ['billed_amount', 'outstanding_amount', 'paid_amount'],
+            'billing_confirmed_collections' => ['net_amount'],
+            'billing_installments' => ['scheduled_amount'],
+            'billing_adjustments' => ['posted_amount'],
+            'billing_payment_reviews' => ['submitted_amount'],
+            'billing_refunds' => ['refunded_amount'],
+            'billing_reversals' => ['reversed_amount'],
+            'billing_unapplied_credits' => ['credit_amount'],
+        ];
+
+        return in_array($measure, $currencySensitiveMeasures[$dataset] ?? [], true);
     }
 
     private function studentsQuery(int $tenantId, int $institutionId): Builder

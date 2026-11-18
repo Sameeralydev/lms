@@ -1,6 +1,6 @@
 ﻿# Finance Final Integration Handoff â€” Phase 24
 
-**Integration status: PARTIAL; billing functionality remains under development.** This handoff records source-of-truth contracts and current extension points; it does not assert full Phase 17/18 acceptance.
+**Historical finance workstream baseline.** This handoff records the source-of-truth contracts and extension points at its original checkpoint. Phase 24 subsequently merged the integration branches and added analytics and notification integration; see the Phase 24 reports in this directory for current merge and QA evidence. This document still does not assert full Phase 17/18 acceptance.
 
 ## Architecture and records
 
@@ -53,3 +53,7 @@ Branch: `developer-a/integrated`. Implementation checkpoint commit: `377702c09b7
 ## Phase 18 statement reconciliation update — 2026-11-18
 
 Phase 18 now provides a neutral CSV statement-review workflow in addition to internal payment/refund reconciliation. Imported statements are evidence only: matches do not settle payments or prove external bank settlement. Current focused SQLite results are Phase 17 16 tests / 395 assertions and Phase 18 8 tests / 294 assertions. Implementation commit `deb4f295437a167068b62309a5bb2e6657491ae4` was pushed normally to `origin/developer-a/integrated`; local and fetched remote HEAD matched at verification. No force push or Developer B branch operation occurred.
+
+## Phase 24 integration update — 2026-11-19
+
+The merged analytics catalog now includes allowlisted billing sources for invoices, confirmed collections, fee assignments, concessions, installment schedules, adjustments, payment reviews, refunds, reversals, and unapplied credits. Monetary totals require currency grouping. Finance report export and drilldown permissions are registered and backfilled additively. Billing notifications now honor an explicit recipient opt-out, and preference lookup is tenant/user/event scoped for queued delivery. These integration changes passed focused SQLite tests, while MySQL and the full post-fix browser suite remain unverified. See `INTEGRATION_TEST_RESULTS.md` and `PRODUCTION_RELEASE_BLOCKERS.md` for the exact evidence and pending checks.

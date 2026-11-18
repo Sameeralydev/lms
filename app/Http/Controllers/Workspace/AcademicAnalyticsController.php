@@ -34,7 +34,8 @@ final class AcademicAnalyticsController extends Controller
     public function index(Tenant $tenant, Request $request, TenantContext $context, AcademicAnalyticsService $analytics, AcademicReportBuilder $builder): Response
     {
         $membership = $context->membership();
-        abort_unless($membership->hasPermission('academic.analytics.view'), 403);
+        $canViewAcademicMetrics = $membership->hasPermission('academic.analytics.view');
+        abort_unless($canViewAcademicMetrics || $membership->hasPermission('billing.reports.view'), 403);
         $filters = $request->validate([
             'campus_id' => ['nullable', 'integer', 'min:1'],
             'from' => ['nullable', 'date'],
@@ -42,12 +43,12 @@ final class AcademicAnalyticsController extends Controller
             'metrics' => ['nullable', 'array', 'max:20'],
             'metrics.*' => ['string', Rule::in(array_column(AcademicMetricRegistry::definitions(), 'key'))],
             'dataset' => ['nullable', 'string', Rule::in(array_keys(AcademicReportBuilder::definitions()))],
-            'report_measure' => ['nullable', 'string', Rule::in(['records', 'unique_learners', 'billed_amount', 'average_gpa'])],
+            'report_measure' => ['nullable', 'string', Rule::in(AcademicReportBuilder::allowedMeasures())],
             'dimensions' => ['nullable', 'array', 'min:1', 'max:2'],
-            'dimensions.*' => ['string', 'max:32'],
+            'dimensions.*' => ['nullable', 'string', 'max:32'],
             'report_status' => ['nullable', 'string', 'max:32'],
             'report_filters' => ['nullable', 'array', 'max:6'],
-            'report_filters.*' => ['string', 'max:100'],
+            'report_filters.*' => ['nullable', 'string', 'max:100'],
             'report_search' => ['nullable', 'string', 'max:80'],
             'report_sort' => ['nullable', 'string', 'max:32'],
             'report_direction' => ['nullable', Rule::in(['asc', 'desc'])],
@@ -71,12 +72,19 @@ final class AcademicAnalyticsController extends Controller
             'page' => isset($filters['report_page']) ? (int) $filters['report_page'] : 1,
             'per_page' => isset($filters['report_per_page']) ? (int) $filters['report_per_page'] : 25,
         ]);
-        $report = $analytics->report($membership, [
+        $report = $canViewAcademicMetrics ? $analytics->report($membership, [
             'campus_id' => isset($filters['campus_id']) ? (int) $filters['campus_id'] : null,
             'from' => $filters['from'] ?? null,
             'to' => $filters['to'] ?? null,
             'metrics' => isset($filters['metrics']) ? array_values(array_unique($filters['metrics'])) : null,
-        ]);
+        ]) : [
+            'metrics' => [], 'trend' => [],
+            'campuses' => DB::table('campuses')->where('tenant_id', $membership->tenant_id)->where('institution_id', $membership->institution_id)
+                ->when($membership->campus_id !== null, fn ($query) => $query->where('id', $membership->campus_id))
+                ->orderBy('name')->get(['id', 'name'])->map(static fn ($campus): array => ['id' => (int) $campus->id, 'name' => (string) $campus->name])->all(),
+            'filters' => ['campus_id' => $membership->campus_id, 'from' => $filters['from'] ?? null, 'to' => $filters['to'] ?? null, 'metrics' => []],
+            'generated_at' => now()->toISOString(),
+        ];
 
         return Inertia::render('workspace/academics/analytics/index', [
             'tenant' => ['slug' => $tenant->slug],
@@ -84,7 +92,12 @@ final class AcademicAnalyticsController extends Controller
             'metric_options' => array_map(static fn (array $metric): array => ['key' => $metric['key'], 'name' => $metric['name']], AcademicMetricRegistry::definitions()),
             'saved_reports' => AcademicAnalyticsSavedReport::query()->where('institution_id', $membership->institution_id)->where('membership_id', $membership->getKey())
                 ->latest('created_at')->limit(20)->get(['id', 'name', 'created_at'])->map(static fn (AcademicAnalyticsSavedReport $saved): array => ['id' => (int) $saved->getKey(), 'name' => $saved->name, 'created_at' => $saved->created_at?->toISOString()])->all(),
-            'permissions' => ['export' => $membership->hasPermission('academic.analytics.export'), 'manage_reports' => $membership->hasPermission('academic.analytics.reports.manage')],
+            'permissions' => [
+                'export' => $membership->hasPermission('academic.analytics.export') || $membership->hasPermission('billing.reports.export'),
+                'academic_export' => $membership->hasPermission('academic.analytics.export'),
+                'manage_reports' => $membership->hasPermission('academic.analytics.reports.manage'),
+                'view_academic_metrics' => $canViewAcademicMetrics,
+            ],
             'report_schedules' => AcademicAnalyticsReportSchedule::query()->where('membership_id', $membership->getKey())->with(['runs' => fn ($query) => $query->latest('created_at')->limit(5), 'recipients:id'])->latest()->limit(20)->get()->map(static fn (AcademicAnalyticsReportSchedule $schedule): array => [
                 'id' => (int) $schedule->getKey(), 'name' => $schedule->name, 'frequency' => $schedule->frequency, 'timezone' => $schedule->timezone,
                 'next_run_at' => $schedule->next_run_at?->toISOString(), 'status' => $schedule->status, 'saved_report_id' => (int) $schedule->saved_report_id,
@@ -123,12 +136,12 @@ final class AcademicAnalyticsController extends Controller
             'metrics' => ['nullable', 'array', 'max:20'],
             'metrics.*' => ['string', Rule::in(array_column(AcademicMetricRegistry::definitions(), 'key'))],
             'dataset' => ['nullable', 'string', Rule::in(array_keys(AcademicReportBuilder::definitions()))],
-            'report_measure' => ['nullable', 'string', Rule::in(['records', 'unique_learners', 'billed_amount', 'average_gpa'])],
+            'report_measure' => ['nullable', 'string', Rule::in(AcademicReportBuilder::allowedMeasures())],
             'dimensions' => ['nullable', 'array', 'min:1', 'max:2'],
-            'dimensions.*' => ['string', 'max:32'],
+            'dimensions.*' => ['nullable', 'string', 'max:32'],
             'report_status' => ['nullable', 'string', 'max:32'],
             'report_filters' => ['nullable', 'array', 'max:6'],
-            'report_filters.*' => ['string', 'max:100'],
+            'report_filters.*' => ['nullable', 'string', 'max:100'],
             'report_search' => ['nullable', 'string', 'max:80'],
             'report_sort' => ['nullable', 'string', 'max:32'],
             'report_direction' => ['nullable', Rule::in(['asc', 'desc'])],
@@ -341,22 +354,22 @@ final class AcademicAnalyticsController extends Controller
     public function exportBuilder(Tenant $tenant, Request $request, TenantContext $context, AcademicReportBuilder $builder, AuditRecorder $audit): StreamedResponse
     {
         $membership = $context->membership();
-        abort_unless($membership->hasPermission('academic.analytics.export'), 403);
         $filters = $request->validate([
             'dataset' => ['required', 'string', Rule::in(array_keys(AcademicReportBuilder::definitions()))],
-            'report_measure' => ['nullable', 'string', Rule::in(['records', 'unique_learners', 'billed_amount', 'average_gpa'])],
+            'report_measure' => ['nullable', 'string', Rule::in(AcademicReportBuilder::allowedMeasures())],
             'dimensions' => ['required', 'array', 'min:1', 'max:2'],
-            'dimensions.*' => ['string', 'max:32'],
+            'dimensions.*' => ['nullable', 'string', 'max:32'],
             'campus_id' => ['nullable', 'integer', 'min:1'],
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date', 'after_or_equal:from'],
             'report_status' => ['nullable', 'string', 'max:32'],
             'report_filters' => ['nullable', 'array', 'max:6'],
-            'report_filters.*' => ['string', 'max:100'],
+            'report_filters.*' => ['nullable', 'string', 'max:100'],
             'report_search' => ['nullable', 'string', 'max:80'],
             'report_sort' => ['nullable', 'string', 'max:32'],
             'report_direction' => ['nullable', Rule::in(['asc', 'desc'])],
         ]);
+        $this->authorizeBuilderExport($membership, (string) $filters['dataset']);
         $this->validateRange($filters['from'] ?? null, $filters['to'] ?? null);
         $dimensions = array_values(array_filter($filters['dimensions'], static fn (mixed $value): bool => is_string($value) && $value !== ''));
         $report = $builder->build($membership, [
@@ -367,7 +380,8 @@ final class AcademicAnalyticsController extends Controller
             'filters' => $filters['report_filters'] ?? [],
             'sort' => $filters['report_sort'] ?? 'total', 'direction' => $filters['report_direction'] ?? 'desc',
         ], true);
-        $audit->record('academic.analytics.builder_exported', $request->user(), (int) $membership->tenant_id, null, [
+        $eventType = str_starts_with($report['dataset'], 'billing_') ? 'billing.analytics.builder_exported' : 'academic.analytics.builder_exported';
+        $audit->record($eventType, $request->user(), (int) $membership->tenant_id, null, [
             'dataset' => $report['dataset'], 'measure' => $report['measure'], 'dimensions' => $report['dimensions'], 'campus_id' => $report['campus_id'],
             'from' => $report['from'], 'to' => $report['to'], 'rows' => count($report['rows']), 'truncated' => $report['total'] > $report['export_limit'],
         ]);
@@ -391,15 +405,15 @@ final class AcademicAnalyticsController extends Controller
     public function drilldown(Tenant $tenant, Request $request, TenantContext $context, AcademicReportBuilder $builder): Response
     {
         $membership = $context->membership();
-        abort_unless($membership->hasPermission('academic.analytics.drilldown'), 403);
         $filters = $request->validate([
             'dataset' => ['required', 'string', Rule::in(array_keys(AcademicReportBuilder::definitions()))],
             'dimension' => ['required', 'string', 'max:32'], 'value' => ['required', 'string', 'max:100'],
             'campus_id' => ['nullable', 'integer', 'min:1'], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'],
-            'report_measure' => ['nullable', 'string', Rule::in(['records', 'unique_learners', 'billed_amount', 'average_gpa'])],
-            'report_status' => ['nullable', 'string', 'max:32'], 'report_filters' => ['nullable', 'array', 'max:6'], 'report_filters.*' => ['string', 'max:100'],
+            'report_measure' => ['nullable', 'string', Rule::in(AcademicReportBuilder::allowedMeasures())],
+            'report_status' => ['nullable', 'string', 'max:32'], 'report_filters' => ['nullable', 'array', 'max:6'], 'report_filters.*' => ['nullable', 'string', 'max:100'],
             'page' => ['nullable', 'integer', 'min:1', 'max:100000'],
         ]);
+        $this->authorizeBuilderDrilldown($membership, (string) $filters['dataset']);
         $this->validateRange($filters['from'] ?? null, $filters['to'] ?? null);
         $detail = $builder->drilldown($membership, [
             'dataset' => $filters['dataset'], 'dimension' => $filters['dimension'], 'value' => $filters['value'],
@@ -415,15 +429,15 @@ final class AcademicAnalyticsController extends Controller
     public function exportBuilderPdf(Tenant $tenant, Request $request, TenantContext $context, AcademicReportBuilder $builder, AuditRecorder $audit, AcademicRecordPdf $pdf): \Symfony\Component\HttpFoundation\Response
     {
         $membership = $context->membership();
-        abort_unless($membership->hasPermission('academic.analytics.export'), 403);
         $filters = $request->validate([
             'dataset' => ['required', 'string', Rule::in(array_keys(AcademicReportBuilder::definitions()))],
-            'report_measure' => ['nullable', 'string', Rule::in(['records', 'unique_learners', 'billed_amount', 'average_gpa'])],
-            'dimensions' => ['required', 'array', 'min:1', 'max:2'], 'dimensions.*' => ['string', 'max:32'],
+            'report_measure' => ['nullable', 'string', Rule::in(AcademicReportBuilder::allowedMeasures())],
+            'dimensions' => ['required', 'array', 'min:1', 'max:2'], 'dimensions.*' => ['nullable', 'string', 'max:32'],
             'campus_id' => ['nullable', 'integer', 'min:1'], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'],
-            'report_status' => ['nullable', 'string', 'max:32'], 'report_filters' => ['nullable', 'array', 'max:6'], 'report_filters.*' => ['string', 'max:100'],
+            'report_status' => ['nullable', 'string', 'max:32'], 'report_filters' => ['nullable', 'array', 'max:6'], 'report_filters.*' => ['nullable', 'string', 'max:100'],
             'report_search' => ['nullable', 'string', 'max:80'], 'report_sort' => ['nullable', 'string', 'max:32'], 'report_direction' => ['nullable', Rule::in(['asc', 'desc'])],
         ]);
+        $this->authorizeBuilderExport($membership, (string) $filters['dataset']);
         $this->validateRange($filters['from'] ?? null, $filters['to'] ?? null);
         $report = $builder->build($membership, [
             'dataset' => $filters['dataset'], 'measure' => $filters['report_measure'] ?? 'records',
@@ -438,7 +452,8 @@ final class AcademicAnalyticsController extends Controller
         foreach ($report['rows'] as $row) {
             $lines[] = implode(' | ', array_map(static fn (string $dimension): string => $dimension.': '.(string) ($row[$dimension] ?? 'Unspecified'), $report['dimensions'])).' | '.$report['measure_label'].': '.$row['total'];
         }
-        $audit->record('academic.analytics.builder_pdf_exported', $request->user(), (int) $membership->tenant_id, null, ['dataset' => $report['dataset'], 'measure' => $report['measure'], 'campus_id' => $report['campus_id'], 'group_count' => count($report['rows']), 'truncated' => $report['total'] > $report['export_limit']]);
+        $eventType = str_starts_with($report['dataset'], 'billing_') ? 'billing.analytics.builder_pdf_exported' : 'academic.analytics.builder_pdf_exported';
+        $audit->record($eventType, $request->user(), (int) $membership->tenant_id, null, ['dataset' => $report['dataset'], 'measure' => $report['measure'], 'campus_id' => $report['campus_id'], 'group_count' => count($report['rows']), 'truncated' => $report['total'] > $report['export_limit']]);
 
         return response($pdf->render($lines), 200, ['Content-Type' => 'application/pdf', 'Content-Disposition' => 'attachment; filename="academic-report.pdf"', 'Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff']);
     }
@@ -457,5 +472,19 @@ final class AcademicAnalyticsController extends Controller
         }
 
         return preg_match('/\A[\t\r ]*[=+@-]/u', $value) === 1 ? "'".$value : $value;
+    }
+
+    private function authorizeBuilderExport(TenantMembership $membership, string $dataset): void
+    {
+        $definition = AcademicReportBuilder::definitions()[$dataset] ?? abort(422, 'Choose a supported report dataset.');
+        abort_unless($membership->hasPermission($definition['permission']), 403);
+        abort_unless($membership->hasPermission(str_starts_with($dataset, 'billing_') ? 'billing.reports.export' : 'academic.analytics.export'), 403);
+    }
+
+    private function authorizeBuilderDrilldown(TenantMembership $membership, string $dataset): void
+    {
+        $definition = AcademicReportBuilder::definitions()[$dataset] ?? abort(422, 'Choose a supported report dataset.');
+        abort_unless($membership->hasPermission($definition['permission']), 403);
+        abort_unless($membership->hasPermission(str_starts_with($dataset, 'billing_') ? 'billing.reports.drilldown' : 'academic.analytics.drilldown'), 403);
     }
 }

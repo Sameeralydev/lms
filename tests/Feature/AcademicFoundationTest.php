@@ -418,6 +418,9 @@ class AcademicFoundationTest extends TestCase
         $savedReportPermissions = require database_path('migrations/2026_11_13_000001_backfill_academic_saved_report_permission.php');
         $savedReportPermissions->up();
         $savedReportPermissions->up();
+        $analyticsDrilldownPermission = require database_path('migrations/2026_11_18_000002_backfill_academic_analytics_drilldown_permission.php');
+        $analyticsDrilldownPermission->up();
+        $analyticsDrilldownPermission->up();
 
         $ownerRole = Role::query()->where('tenant_id', $tenant->getKey())->where('key', 'tenant.owner')->firstOrFail();
         $academicRole = Role::query()->where('tenant_id', $tenant->getKey())->where('key', 'academic.admin')->firstOrFail();

@@ -1,6 +1,6 @@
 # Phase 17/18 Finance Integration Contract for Phase 24
 
-Status: integration handoff only. Phase 24 implementation has not started.
+Status: finance integration contract and historical baseline. Phase 24 has since merged the Developer A/B branches; the current integration status and evidence are recorded in `FINAL_PRODUCT_HANDOFF.md` and `INTEGRATION_TEST_RESULTS.md` in this directory.
 
 This document describes the currently implemented finance interfaces and the boundaries downstream modules must preserve. It does not claim full Phase 17/18 acceptance or production readiness.
 
@@ -72,3 +72,7 @@ Latest focused local results recorded on 2026-11-18:
 - Focused static/frontend/build checks passed as listed in the Phase 17/18 test reports.
 
 These are development checks, not MySQL, concurrency, browser/accessibility, external-provider, hosted-CI, or production evidence. Phase 17 and Phase 18 retain substantive unimplemented requirements documented in their traceability reports. No Phase 24 code is started by this contract.
+
+## Phase 24 update — 2026-11-19
+
+The preceding sentence is historical and is superseded by the Phase 24 merge report. The current analytics catalog includes billing-specific sources and the finance notification opt-out integration. Those changes have focused SQLite and browser evidence, but do not constitute full finance acceptance; MySQL, complete browser regression, hosted CI, and production integrations remain separate verification gates. Refer to the Phase 24 final handoff and release-blocker report for current status.

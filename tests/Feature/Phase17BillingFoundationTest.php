@@ -331,6 +331,23 @@ final class Phase17BillingFoundationTest extends TestCase
         ], $notification->toDatabase(new \stdClass));
     }
 
+    public function test_billing_notifications_respect_an_explicit_recipient_opt_out(): void
+    {
+        [$tenant, $owner] = $this->provision('Billing Notification Preferences');
+        $notification = new BillingActivityNotification('billing.invoice.issued', 'Invoice issued.', [
+            'tenant_id' => (int) $tenant->getKey(), 'invoice_number' => 'INV-OPT-OUT',
+        ]);
+
+        self::assertSame(['database'], $notification->via($owner));
+
+        \DB::table('communications_notification_preferences')->insert([
+            'tenant_id' => $tenant->getKey(), 'user_id' => $owner->getKey(), 'event_type' => 'billing',
+            'in_app_enabled' => false, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        self::assertSame([], $notification->via($owner));
+    }
+
     public function test_due_date_cannot_precede_billing_period_start(): void
     {
         [$tenant, $owner, $membership] = $this->provision('Billing Due Date Academy');

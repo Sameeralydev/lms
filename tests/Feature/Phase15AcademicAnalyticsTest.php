@@ -31,6 +31,7 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\Support\GuardedRefreshDatabase;
 use Tests\TestCase;
 
@@ -124,6 +125,175 @@ final class Phase15AcademicAnalyticsTest extends TestCase
             ->assertForbidden();
         $this->actingAs($admissionsUser)->get("/t/{$tenant->slug}/academics/analytics/drilldown?dataset=enrollments&dimension=status&value=confirmed")
             ->assertForbidden();
+    }
+
+    public function test_report_builder_accepts_empty_optional_group_and_filter_controls(): void
+    {
+        $owner = User::factory()->create();
+        $tenant = $this->provision($owner, 'Optional Report Controls Academy');
+
+        $this->actingAs($owner)->get("/t/{$tenant->slug}/academics/analytics?dataset=admissions&report_measure=records&dimensions%5B0%5D=status&dimensions%5B1%5D=&report_filters%5Bstatus%5D=&report_filters%5Beligibility%5D=")
+            ->assertOk()->assertInertia(fn ($page) => $page
+            ->where('builder_report.dataset', 'admissions')
+            ->where('builder_report.measure', 'records')
+            ->where('builder_report.dimensions.0', 'status')
+            ->where('builder_report.filters', []));
+    }
+
+    public function test_finance_manager_can_view_scoped_invoice_analytics_without_academic_metrics(): void
+    {
+        $owner = User::factory()->create();
+        $tenant = $this->provision($owner, 'Finance Analytics Academy');
+        $campus = $this->createCampus($tenant, 'ANL-FIN');
+        $financeUser = User::factory()->create();
+        $finance = $this->createMember($tenant, $financeUser, 'finance.manager', (int) $campus->getKey());
+        $context = app(TenantContext::class);
+        $context->set($tenant, $finance);
+        try {
+            $studentId = DB::table('sis_students')->insertGetId([
+                'tenant_id' => $tenant->getKey(), 'institution_id' => $finance->institution_id, 'home_campus_id' => $campus->getKey(),
+                'student_number' => 'ANL-FIN-01', 'registration_reference' => 'ANL-FIN-REF-01', 'legal_first_name' => 'Finance', 'legal_last_name' => 'Learner',
+                'admission_date' => today()->toDateString(), 'created_by' => $owner->getKey(), 'updated_by' => $owner->getKey(), 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            $structureId = DB::table('billing_fee_structures')->insertGetId([
+                'tenant_id' => $tenant->getKey(), 'institution_id' => $finance->institution_id, 'campus_id' => $campus->getKey(),
+                'code' => 'ANL-FIN-STRUCT', 'name' => 'Finance analytics fixture', 'currency' => 'USD', 'frequency' => 'one_time',
+                'effective_from' => '2026-01-01', 'status' => 'active', 'created_by' => $owner->getKey(), 'published_by' => $owner->getKey(),
+                'published_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            DB::table('billing_invoices')->insert([
+                'tenant_id' => $tenant->getKey(), 'institution_id' => $finance->institution_id, 'campus_id' => $campus->getKey(),
+                'student_id' => $studentId, 'fee_structure_id' => $structureId, 'invoice_number' => 'ANL-FIN-INV-01',
+                'idempotency_key' => 'analytics-finance-invoice-01', 'period_start' => '2026-11-01', 'period_end' => '2026-11-30',
+                'due_on' => '2026-11-30', 'currency' => 'USD', 'subtotal' => '100.00', 'discount_total' => '0.00',
+                'total' => '100.00', 'adjusted_total' => '100.00', 'paid_amount' => '30.00', 'outstanding_amount' => '70.00',
+                'status' => 'partially_paid', 'issued_at' => now(), 'issued_by' => $owner->getKey(), 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        } finally {
+            $context->clear();
+        }
+
+        self::assertTrue($finance->fresh()->hasPermission('billing.reports.view'));
+        $url = "/t/{$tenant->slug}/academics/analytics?dataset=billing_invoices&report_measure=outstanding_amount&dimensions%5B0%5D=currency&dimensions%5B1%5D=campus";
+        $this->actingAs($financeUser)->get($url)->assertOk()->assertInertia(fn ($page) => $page
+            ->component('workspace/academics/analytics/index')
+            ->where('builder_report.dataset', 'billing_invoices')
+            ->where('builder_report.rows.0.currency', 'USD')
+            ->where('builder_report.rows.0.total', 70)
+            ->has('metrics', 0)
+            ->where('permissions.view_academic_metrics', false));
+
+        $this->actingAs($financeUser)->get("/t/{$tenant->slug}/academics/analytics/drilldown?dataset=billing_invoices&dimension=currency&value=USD&report_measure=outstanding_amount")
+            ->assertOk()->assertInertia(fn ($page) => $page->where('report.total', 1)->where('report.rows.0.measure_value', 70));
+        $csv = $this->actingAs($financeUser)->get("/t/{$tenant->slug}/academics/analytics/report-builder.csv?dataset=billing_invoices&report_measure=outstanding_amount&dimensions%5B0%5D=currency")
+            ->assertOk()->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
+        self::assertStringContainsString('USD,70', $csv->streamedContent());
+        $pdf = $this->actingAs($financeUser)->get("/t/{$tenant->slug}/academics/analytics/report-builder.pdf?dataset=billing_invoices&report_measure=outstanding_amount&dimensions%5B0%5D=currency")
+            ->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        self::assertStringStartsWith('%PDF-', $pdf->getContent());
+
+        $role = Role::query()->where('tenant_id', $tenant->getKey())->where('key', 'finance.manager')->firstOrFail();
+        $role->permissions()->detach(Permission::query()->where('key', 'billing.reports.export')->value('id'));
+        $this->actingAs($financeUser)->get("/t/{$tenant->slug}/academics/analytics/report-builder.csv?dataset=billing_invoices&report_measure=outstanding_amount&dimensions%5B0%5D=currency")
+            ->assertForbidden();
+    }
+
+    public function test_financial_report_catalog_reconciles_assignments_schedules_adjustments_and_payment_events(): void
+    {
+        $owner = User::factory()->create();
+        $tenant = $this->provision($owner, 'Finance Source Catalog Academy');
+        $campus = $this->createCampus($tenant, 'ANL-SOURCES');
+        $membership = TenantMembership::query()->withoutGlobalScope('tenant')->where('tenant_id', $tenant->getKey())->where('user_id', $owner->getKey())->firstOrFail();
+        $studentId = DB::table('sis_students')->insertGetId([
+            'tenant_id' => $tenant->getKey(), 'institution_id' => $membership->institution_id, 'home_campus_id' => $campus->getKey(),
+            'student_number' => 'ANL-SOURCE-01', 'registration_reference' => 'ANL-SOURCE-REF-01', 'legal_first_name' => 'Finance', 'legal_last_name' => 'Source',
+            'admission_date' => today()->toDateString(), 'created_by' => $owner->getKey(), 'updated_by' => $owner->getKey(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $structureId = DB::table('billing_fee_structures')->insertGetId([
+            'tenant_id' => $tenant->getKey(), 'institution_id' => $membership->institution_id, 'campus_id' => $campus->getKey(),
+            'code' => 'ANL-SOURCE-STRUCT', 'name' => 'Finance source fixture', 'currency' => 'USD', 'frequency' => 'one_time',
+            'effective_from' => '2026-01-01', 'status' => 'active', 'created_by' => $owner->getKey(), 'published_by' => $owner->getKey(),
+            'published_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('billing_fee_assignments')->insert([
+            'tenant_id' => $tenant->getKey(), 'institution_id' => $membership->institution_id, 'campus_id' => $campus->getKey(), 'student_id' => $studentId,
+            'fee_structure_id' => $structureId, 'period_start' => '2026-11-01', 'period_end' => '2026-11-30', 'effective_from' => '2026-11-01',
+            'source' => 'manual', 'status' => 'assigned', 'idempotency_key' => 'analytics-assignment-01', 'assigned_by' => $owner->getKey(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('billing_concessions')->insert([
+            'tenant_id' => $tenant->getKey(), 'institution_id' => $membership->institution_id, 'campus_id' => $campus->getKey(), 'student_id' => $studentId,
+            'code' => 'ANL-SCHOLARSHIP', 'name' => 'Analytics scholarship', 'kind' => 'fixed', 'value' => '5.00', 'status' => 'approved',
+            'effective_from' => '2026-11-01', 'reason' => 'Synthetic report fixture', 'requested_by' => $owner->getKey(), 'reviewed_by' => $owner->getKey(),
+            'reviewed_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $invoiceId = DB::table('billing_invoices')->insertGetId([
+            'tenant_id' => $tenant->getKey(), 'institution_id' => $membership->institution_id, 'campus_id' => $campus->getKey(),
+            'student_id' => $studentId, 'fee_structure_id' => $structureId, 'invoice_number' => 'ANL-SOURCE-INV-01', 'idempotency_key' => 'analytics-source-invoice-01',
+            'period_start' => '2026-11-01', 'period_end' => '2026-11-30', 'due_on' => '2026-11-30', 'currency' => 'USD', 'subtotal' => '100.00', 'discount_total' => '0.00',
+            'total' => '100.00', 'adjusted_total' => '100.00', 'paid_amount' => '0.00', 'outstanding_amount' => '100.00', 'status' => 'issued',
+            'issued_at' => now(), 'issued_by' => $owner->getKey(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $planId = DB::table('billing_installment_plans')->insertGetId([
+            'tenant_id' => $tenant->getKey(), 'invoice_id' => $invoiceId, 'status' => 'published', 'installment_count' => 1, 'version' => 1,
+            'created_by' => $owner->getKey(), 'published_by' => $owner->getKey(), 'published_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('billing_installments')->insert([
+            'tenant_id' => $tenant->getKey(), 'plan_id' => $planId, 'sequence' => 1, 'due_on' => '2026-11-30', 'amount' => '30.00',
+            'status' => 'scheduled', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('billing_adjustments')->insert([
+            'tenant_id' => $tenant->getKey(), 'invoice_id' => $invoiceId, 'adjustment_number' => 'ANL-ADJ-01', 'idempotency_key' => 'analytics-adjustment-01',
+            'kind' => 'credit', 'amount' => '5.00', 'currency' => 'USD', 'status' => 'posted', 'reason' => 'Synthetic report fixture',
+            'requested_by' => $owner->getKey(), 'reviewed_by' => $owner->getKey(), 'reviewed_at' => now(), 'posted_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $confirmedPaymentId = DB::table('billing_payments')->insertGetId([
+            'tenant_id' => $tenant->getKey(), 'institution_id' => $membership->institution_id, 'campus_id' => $campus->getKey(), 'student_id' => $studentId,
+            'payment_number' => 'ANL-PAY-01', 'idempotency_key' => 'analytics-payment-01', 'method' => 'cash', 'status' => 'confirmed', 'currency' => 'USD',
+            'amount' => '40.00', 'unapplied_amount' => '10.00', 'receipt_number' => 'ANL-REC-01', 'recorded_at' => now(), 'recorded_by' => $owner->getKey(),
+            'confirmed_at' => now(), 'confirmed_by' => $owner->getKey(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('billing_payments')->insert([
+            'tenant_id' => $tenant->getKey(), 'institution_id' => $membership->institution_id, 'campus_id' => $campus->getKey(), 'student_id' => $studentId,
+            'payment_number' => 'ANL-PAY-02', 'idempotency_key' => 'analytics-payment-02', 'method' => 'bank_transfer', 'status' => 'pending_verification', 'currency' => 'USD',
+            'amount' => '20.00', 'unapplied_amount' => '0.00', 'reference' => 'ANL-BANK-REF', 'recorded_at' => now(), 'recorded_by' => $owner->getKey(),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('billing_payment_refunds')->insert([
+            'tenant_id' => $tenant->getKey(), 'payment_id' => $confirmedPaymentId, 'refund_number' => 'ANL-REF-01', 'request_key' => 'analytics-refund-01',
+            'amount' => '2.00', 'currency' => 'USD', 'unapplied_refund_amount' => '0.00', 'status' => 'refunded', 'reason' => 'Synthetic report fixture', 'requested_by' => $owner->getKey(),
+            'requested_at' => now(), 'reviewed_by' => $owner->getKey(), 'reviewed_at' => now(), 'executed_by' => $owner->getKey(), 'executed_at' => now(),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $reversedPaymentId = DB::table('billing_payments')->insertGetId([
+            'tenant_id' => $tenant->getKey(), 'institution_id' => $membership->institution_id, 'campus_id' => $campus->getKey(), 'student_id' => $studentId,
+            'payment_number' => 'ANL-PAY-03', 'idempotency_key' => 'analytics-payment-03', 'method' => 'cash', 'status' => 'reversed', 'currency' => 'USD',
+            'amount' => '25.00', 'unapplied_amount' => '0.00', 'receipt_number' => 'ANL-REC-03', 'recorded_at' => now(), 'recorded_by' => $owner->getKey(),
+            'confirmed_at' => now(), 'confirmed_by' => $owner->getKey(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('billing_payment_reversals')->insert([
+            'tenant_id' => $tenant->getKey(), 'payment_id' => $reversedPaymentId, 'reversal_number' => 'ANL-REV-01', 'request_key' => 'analytics-reversal-01',
+            'status' => 'reversed', 'reason' => 'Synthetic report fixture', 'requested_by' => $owner->getKey(), 'requested_at' => now(),
+            'reviewed_by' => $owner->getKey(), 'reviewed_at' => now(), 'executed_by' => $owner->getKey(), 'executed_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $builder = app(AcademicReportBuilder::class);
+        $queries = [
+            'billing_assignments' => ['records', ['status'], 1],
+            'billing_concessions' => ['records', ['status'], 1],
+            'billing_installments' => ['scheduled_amount', ['currency', 'campus'], 30],
+            'billing_adjustments' => ['posted_amount', ['currency', 'kind'], 5],
+            'billing_payment_reviews' => ['submitted_amount', ['currency', 'status'], 85],
+            'billing_refunds' => ['refunded_amount', ['currency', 'status'], 2],
+            'billing_reversals' => ['reversed_amount', ['currency', 'status'], 25],
+            'billing_unapplied_credits' => ['credit_amount', ['currency', 'campus'], 10],
+        ];
+        foreach ($queries as $dataset => [$measure, $dimensions, $expected]) {
+            $report = $builder->build($membership, ['dataset' => $dataset, 'measure' => $measure, 'dimensions' => $dimensions]);
+            self::assertNotEmpty($report['rows'], $dataset);
+            self::assertEquals($expected, array_sum(array_column($report['rows'], 'total')), $dataset);
+        }
+        $this->expectException(HttpException::class);
+        $builder->build($membership, ['dataset' => 'billing_installments', 'measure' => 'scheduled_amount', 'dimensions' => ['campus']]);
     }
 
     public function test_gpa_analytics_uses_the_latest_snapshot_for_active_policies_and_drilldown_reconciles(): void
