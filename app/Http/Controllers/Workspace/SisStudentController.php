@@ -52,6 +52,7 @@ use App\Models\Tenant;
 use App\Models\TenantInvitation;
 use App\Models\TenantMembership;
 use App\Models\User;
+use App\Support\PrivateQuarantineUpload;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\JsonResponse;
@@ -507,7 +508,8 @@ final class SisStudentController extends Controller
                     ] : null,
                     'phone' => $guardian->guardian_phone, 'relationship' => $guardian->relationship, 'authorityStatus' => $guardian->authority_status,
                     'primary' => $guardian->is_primary_contact, 'emergency' => $guardian->is_emergency_contact,
-                    'canViewProfile' => $guardian->can_view_profile, 'verifiedAt' => $guardian->verified_at ? Carbon::parse($guardian->verified_at)->toIso8601String() : null, 'revokedAt' => $guardian->revoked_at ? Carbon::parse($guardian->revoked_at)->toIso8601String() : null,
+                    'canViewProfile' => $guardian->can_view_profile, 'canViewFinancialRecords' => $guardian->can_view_financial_records,
+                    'verifiedAt' => $guardian->verified_at ? Carbon::parse($guardian->verified_at)->toIso8601String() : null, 'revokedAt' => $guardian->revoked_at ? Carbon::parse($guardian->revoked_at)->toIso8601String() : null,
                     'identityCandidates' => in_array($guardian->authority_status, ['pending', 'verified'], true)
                         && $guardian->revoked_at === null && $guardian->guardian_user_id === null
                         ? $guardianAccountCandidates->get(Str::lower(trim((string) $guardian->guardian_email)), collect())
@@ -1123,7 +1125,7 @@ final class SisStudentController extends Controller
         $studentId = DB::transaction(function () use ($guardianId, $request, $data): int {
             $guardian = SisStudentGuardian::query()->lockForUpdate()->findOrFail($guardianId);
             if ($guardian->authority_status !== 'revoked') {
-                $guardian->forceFill(['authority_status' => 'revoked', 'can_view_profile' => false, 'revoked_by' => $request->user()->getKey(), 'revoked_at' => now(), 'revocation_reason' => $data['reason']])->save();
+                $guardian->forceFill(['authority_status' => 'revoked', 'can_view_profile' => false, 'can_view_financial_records' => false, 'revoked_by' => $request->user()->getKey(), 'revoked_at' => now(), 'revocation_reason' => $data['reason']])->save();
                 app(AuditRecorder::class)->record('sis.guardian.revoked', $request->user(), (int) $this->context->tenant()->getKey(), $guardian, ['student_id' => $guardian->student_id, 'reason' => $data['reason']]);
             }
 
@@ -1131,6 +1133,27 @@ final class SisStudentController extends Controller
         }, 3);
 
         return $this->studentProfileRedirect($studentId)->with('status', 'Guardian authority revoked.');
+    }
+
+    public function financialGuardianAccess(Request $request, Tenant $tenant, int $guardianId): RedirectResponse
+    {
+        $data = $request->validate(['can_view_financial_records' => ['required', 'boolean']]);
+        $guardian = DB::transaction(function () use ($guardianId, $data, $request): SisStudentGuardian {
+            $guardian = SisStudentGuardian::query()->lockForUpdate()->findOrFail($guardianId);
+            abort_unless($guardian->authority_status === 'verified' && $guardian->revoked_at === null, 409);
+            if ((bool) $data['can_view_financial_records'] && $guardian->guardian_user_id === null) {
+                throw ValidationException::withMessages(['can_view_financial_records' => 'Link a verified guardian account before granting financial record access.']);
+            }
+            $guardian->forceFill(['can_view_financial_records' => (bool) $data['can_view_financial_records']])->save();
+            app(AuditRecorder::class)->record('sis.guardian.financial_access.changed', $request->user(), (int) $this->context->tenant()->getKey(), $guardian, [
+                'student_id' => (int) $guardian->student_id, 'enabled' => (bool) $guardian->can_view_financial_records,
+                'guardian_user_id' => $guardian->guardian_user_id,
+            ]);
+
+            return $guardian;
+        }, 3);
+
+        return $this->studentProfileRedirect((int) $guardian->student_id)->with('status', $guardian->can_view_financial_records ? 'Financial records access granted to this verified guardian.' : 'Financial records access revoked.');
     }
 
     public function storeFamily(Request $request, Tenant $tenant, int $studentId): RedirectResponse
@@ -1320,6 +1343,9 @@ final class SisStudentController extends Controller
             'file' => ['required', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png', 'mimetypes:application/pdf,image/jpeg,image/png'],
         ]);
         $file = $data['file'];
+        if ($file instanceof UploadedFile) {
+            PrivateQuarantineUpload::assertReadable($file);
+        }
         if (! $file instanceof UploadedFile || ! in_array($file->getMimeType(), ['application/pdf', 'image/jpeg', 'image/png'], true)) {
             abort(422, 'The file content does not match a supported document format.');
         }
@@ -1327,11 +1353,11 @@ final class SisStudentController extends Controller
         $extension = ['application/pdf' => 'pdf', 'image/jpeg' => 'jpg', 'image/png' => 'png'][$mime];
         $this->assertSisFileSignature($file, $mime);
         $path = 'sis/'.$tenantId.'/'.$student->getKey().'/'.Str::uuid().'.'.$extension;
-        $storedPath = Storage::disk('local')->putFileAs(dirname($path), $file, basename($path));
-        abort_unless(is_string($storedPath), 500, 'The private student document could not be stored.');
+        $staged = PrivateQuarantineUpload::stage($file, $path);
+        $storedPath = $staged['path'];
 
         try {
-            [$document, $version, $scanEvent] = DB::transaction(function () use ($data, $file, $mime, $extension, $storedPath, $student, $request): array {
+            [$document, $version, $scanEvent] = DB::transaction(function () use ($data, $file, $mime, $extension, $storedPath, $student, $request, $staged): array {
                 if (! empty($data['replace_document_id'])) {
                     $document = SisPrivateDocument::query()->where('student_id', $student->getKey())->lockForUpdate()->findOrFail($data['replace_document_id']);
                 } else {
@@ -1351,7 +1377,7 @@ final class SisStudentController extends Controller
                     'document_id' => $document->getKey(), 'version_number' => $number,
                     'private_path' => $storedPath, 'original_name' => $this->safeSisOriginalName((string) $file->getClientOriginalName(), $extension),
                     'mime_type' => $mime, 'size_bytes' => (int) $file->getSize(),
-                    'sha256' => hash_file('sha256', (string) $file->getRealPath()), 'uploaded_by' => $request->user()->getKey(),
+                    'sha256' => $staged['sha256'], 'uploaded_by' => $request->user()->getKey(),
                     'expires_at' => $retentionDays ? now()->addDays((int) $retentionDays) : null,
                 ]);
                 $document->forceFill([

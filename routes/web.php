@@ -12,6 +12,7 @@ use App\Http\Controllers\Platform\DashboardController as PlatformDashboardContro
 use App\Http\Controllers\Platform\OperatorController;
 use App\Http\Controllers\Platform\SettingsController as PlatformSettingsController;
 use App\Http\Controllers\Platform\TenantController as PlatformTenantController;
+use App\Http\Controllers\Workspace\AcademicAnalyticsController;
 use App\Http\Controllers\Workspace\AcademicAuditController;
 use App\Http\Controllers\Workspace\AcademicCalendarController;
 use App\Http\Controllers\Workspace\AcademicCatalogController;
@@ -29,6 +30,8 @@ use App\Http\Controllers\Workspace\AssignmentController;
 use App\Http\Controllers\Workspace\AssignmentNotificationController;
 use App\Http\Controllers\Workspace\AttendanceController;
 use App\Http\Controllers\Workspace\AuditController as WorkspaceAuditController;
+use App\Http\Controllers\Workspace\BillingController;
+use App\Http\Controllers\Workspace\BillingPaymentController;
 use App\Http\Controllers\Workspace\BrandingController;
 use App\Http\Controllers\Workspace\CampusController;
 use App\Http\Controllers\Workspace\CourseDeliveryAnalyticsController;
@@ -116,6 +119,37 @@ Route::middleware('auth')->group(function (): void {
     Route::prefix('t/{tenant:slug}')->name('tenant.')->middleware('tenant.workspace')->group(function (): void {
         Route::get('/', fn (Tenant $tenant) => redirect()->route('tenant.dashboard', $tenant))->name('home');
         Route::get('/dashboard', WorkspaceDashboardController::class)->name('dashboard');
+        Route::get('/billing/my', [BillingController::class, 'myInvoices'])->middleware('tenant.permission:billing.portal.view-own')->name('billing.my');
+        Route::get('/billing/my/{invoiceId}', [BillingController::class, 'showMyInvoice'])->middleware('tenant.permission:billing.portal.view-own')->whereNumber('invoiceId')->name('billing.my.show');
+        Route::get('/billing/my/{invoiceId}/print', [BillingController::class, 'printMyInvoice'])->middleware('tenant.permission:billing.portal.view-own')->whereNumber('invoiceId')->name('billing.my.print');
+        Route::get('/billing/my/payments/{paymentId}/receipt', [BillingPaymentController::class, 'myReceipt'])->middleware('tenant.permission:billing.portal.view-own')->whereNumber('paymentId')->name('billing.my.payments.receipt');
+        Route::prefix('billing')->name('billing.')->middleware('tenant.permission:billing.view')->group(function (): void {
+            Route::get('/', [BillingController::class, 'index'])->name('index');
+            Route::get('/reports', [BillingController::class, 'reports'])->middleware('tenant.permission:billing.reports.view')->name('reports');
+            Route::get('/reports.csv', [BillingController::class, 'exportReports'])->middleware('tenant.permission:billing.reports.view')->name('reports.csv');
+            Route::post('/fee-heads', [BillingController::class, 'storeFeeHead'])->middleware('tenant.permission:billing.fees.manage')->name('fee-heads.store');
+            Route::put('/fee-heads/{headId}', [BillingController::class, 'updateFeeHead'])->middleware('tenant.permission:billing.fees.manage')->whereNumber('headId')->name('fee-heads.update');
+            Route::post('/structures', [BillingController::class, 'storeStructure'])->middleware('tenant.permission:billing.fees.manage')->name('structures.store');
+            Route::put('/structures/{structureId}', [BillingController::class, 'updateDraftStructure'])->middleware('tenant.permission:billing.fees.manage')->whereNumber('structureId')->name('structures.update');
+            Route::post('/structures/{structureId}/activate', [BillingController::class, 'publishStructure'])->middleware('tenant.permission:billing.fees.manage')->whereNumber('structureId')->name('structures.activate');
+            Route::get('/invoices', [BillingController::class, 'index'])->middleware('tenant.permission:billing.invoices.view')->name('invoices.index');
+            Route::post('/invoices', [BillingController::class, 'issueInvoice'])->middleware('tenant.permission:billing.invoices.issue')->name('invoices.store');
+            Route::get('/invoices/{invoiceId}', [BillingController::class, 'showInvoice'])->middleware('tenant.permission:billing.invoices.view')->whereNumber('invoiceId')->name('invoices.show');
+            Route::get('/invoices/{invoiceId}/print', [BillingController::class, 'printInvoice'])->middleware('tenant.permission:billing.invoices.view')->whereNumber('invoiceId')->name('invoices.print');
+            Route::post('/invoices/{invoiceId}/cancel', [BillingController::class, 'cancelInvoice'])->middleware('tenant.permission:billing.invoices.cancel')->whereNumber('invoiceId')->name('invoices.cancel');
+            Route::get('/payments', [BillingPaymentController::class, 'index'])->middleware('tenant.permission:billing.payments.view')->name('payments.index');
+            Route::get('/reconciliation', [BillingPaymentController::class, 'reconciliation'])->middleware('tenant.permission:billing.reports.view')->name('reconciliation');
+            Route::get('/reconciliation.csv', [BillingPaymentController::class, 'exportReconciliation'])->middleware('tenant.permission:billing.reports.view')->name('reconciliation.csv');
+            Route::post('/payments', [BillingPaymentController::class, 'store'])->middleware('tenant.permission:billing.payments.collect')->name('payments.store');
+            Route::post('/payments/{paymentId}/verify', [BillingPaymentController::class, 'verify'])->middleware('tenant.permission:billing.payments.verify')->whereNumber('paymentId')->name('payments.verify');
+            Route::post('/payments/{paymentId}/reject', [BillingPaymentController::class, 'reject'])->middleware('tenant.permission:billing.payments.verify')->whereNumber('paymentId')->name('payments.reject');
+            Route::post('/payments/{paymentId}/allocate', [BillingPaymentController::class, 'allocate'])->middleware('tenant.permission:billing.payments.allocate')->whereNumber('paymentId')->name('payments.allocate');
+            Route::get('/payments/{paymentId}/receipt', [BillingPaymentController::class, 'receipt'])->middleware('tenant.permission:billing.receipts.view')->whereNumber('paymentId')->name('payments.receipt');
+            Route::post('/payments/{paymentId}/refunds', [BillingPaymentController::class, 'requestRefund'])->middleware('tenant.permission:billing.refunds.request')->whereNumber('paymentId')->name('payments.refunds.store');
+            Route::post('/refunds/{refundId}/approve', [BillingPaymentController::class, 'approveRefund'])->middleware('tenant.permission:billing.refunds.approve')->whereNumber('refundId')->name('refunds.approve');
+            Route::post('/refunds/{refundId}/reject', [BillingPaymentController::class, 'rejectRefund'])->middleware('tenant.permission:billing.refunds.approve')->whereNumber('refundId')->name('refunds.reject');
+            Route::post('/refunds/{refundId}/execute', [BillingPaymentController::class, 'executeRefund'])->middleware('tenant.permission:billing.refunds.execute')->whereNumber('refundId')->name('refunds.execute');
+        });
         Route::get('/institution', [InstitutionController::class, 'show'])->middleware('tenant.permission:tenant.view')->name('institution.show');
         Route::put('/institution', [InstitutionController::class, 'update'])->middleware('tenant.permission:institution.update')->name('institution.update');
         Route::get('/campuses', [CampusController::class, 'index'])->middleware('tenant.permission:campus.view')->name('campuses.index');
@@ -321,6 +355,18 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/instructor/schedule', [AcademicTimetableController::class, 'personal'])->name('academics.instructor-schedule');
         Route::prefix('academics')->name('academics.')->middleware(['tenant.permission:academic.view', 'tenant.academic.scope', 'tenant.academic.feature'])->group(function (): void {
             Route::get('/', AcademicDashboardController::class)->name('index');
+            Route::get('/analytics', [AcademicAnalyticsController::class, 'index'])->middleware('tenant.permission:academic.analytics.view')->name('analytics.index');
+            Route::get('/analytics.csv', [AcademicAnalyticsController::class, 'export'])->middleware('tenant.permission:academic.analytics.export')->name('analytics.export');
+            Route::get('/analytics/report-builder.csv', [AcademicAnalyticsController::class, 'exportBuilder'])->middleware('tenant.permission:academic.analytics.export')->name('analytics.builder.export');
+            Route::get('/analytics/report-builder.pdf', [AcademicAnalyticsController::class, 'exportBuilderPdf'])->middleware('tenant.permission:academic.analytics.export')->name('analytics.builder.pdf');
+            Route::get('/analytics/drilldown', [AcademicAnalyticsController::class, 'drilldown'])->middleware('tenant.permission:academic.analytics.drilldown')->name('analytics.drilldown');
+            Route::post('/analytics/schedules', [AcademicAnalyticsController::class, 'storeSchedule'])->middleware('tenant.permission:academic.analytics.reports.manage')->name('analytics.schedules.store');
+            Route::post('/analytics/schedules/{scheduleId}/status', [AcademicAnalyticsController::class, 'setScheduleStatus'])->middleware('tenant.permission:academic.analytics.reports.manage')->whereNumber('scheduleId')->name('analytics.schedules.status');
+            Route::put('/analytics/schedules/{scheduleId}', [AcademicAnalyticsController::class, 'updateSchedule'])->middleware('tenant.permission:academic.analytics.reports.manage')->whereNumber('scheduleId')->name('analytics.schedules.update');
+            Route::get('/analytics/schedules/runs/{runId}', [AcademicAnalyticsController::class, 'downloadScheduledRun'])->whereNumber('runId')->name('analytics.schedules.runs.download');
+            Route::post('/analytics/reports', [AcademicAnalyticsController::class, 'storeReport'])->middleware('tenant.permission:academic.analytics.reports.manage')->name('analytics.reports.store');
+            Route::get('/analytics/reports/{reportId}', [AcademicAnalyticsController::class, 'applyReport'])->middleware('tenant.permission:academic.analytics.view')->whereNumber('reportId')->name('analytics.reports.apply');
+            Route::delete('/analytics/reports/{reportId}', [AcademicAnalyticsController::class, 'deleteReport'])->middleware('tenant.permission:academic.analytics.reports.manage')->whereNumber('reportId')->name('analytics.reports.delete');
             Route::get('/calendar', [AcademicCalendarController::class, 'index'])->name('calendar');
             Route::prefix('grades')->name('grades.')->middleware('tenant.permission:academic.grades.book.view')->group(function (): void {
                 Route::get('/', [GradebookController::class, 'index'])->name('index');
@@ -600,6 +646,7 @@ Route::middleware('auth')->group(function (): void {
             Route::post('/guardians/{guardianId}/identity', [SisStudentController::class, 'linkGuardianIdentity'])->middleware('tenant.permission:sis.guardians.verify')->name('guardians.identity.link');
             Route::post('/guardians/{guardianId}/identity/invite', [SisStudentController::class, 'inviteGuardianIdentity'])->middleware('tenant.permission:sis.guardians.verify')->name('guardians.identity.invite');
             Route::post('/guardians/{guardianId}/revoke', [SisStudentController::class, 'revokeGuardian'])->middleware('tenant.permission:sis.guardians.manage')->name('guardians.revoke');
+            Route::patch('/guardians/{guardianId}/financial-access', [SisStudentController::class, 'financialGuardianAccess'])->middleware('tenant.permission:sis.guardians.manage')->name('guardians.financial-access');
             Route::post('/students/{studentId}/families', [SisStudentController::class, 'storeFamily'])->middleware('tenant.permission:sis.family.manage')->name('students.families.store');
             Route::get('/families/{familyId}/students/search', [SisStudentController::class, 'familyStudentOptions'])->middleware(['tenant.permission:sis.family.manage', 'throttle:sis.family-search'])->name('families.students.search');
             Route::put('/students/{studentId}/families/{familyId}', [SisStudentController::class, 'updateFamilyMembership'])->middleware('tenant.permission:sis.family.manage')->name('students.families.update');

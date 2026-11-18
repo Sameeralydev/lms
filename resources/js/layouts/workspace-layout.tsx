@@ -64,6 +64,11 @@ const tenantNavigation = [
     ['Policy profiles', 'academics/policies', 'academic.view'],
     ['Quality & documents', 'academics/quality', 'academic.view'],
     ['Academic history', 'academics/audit', 'academic.audit.view'],
+    ['Academic analytics', 'academics/analytics', 'academic.analytics.view'],
+    ['Billing & invoices', 'billing', 'billing.view'],
+    ['Billing reports', 'billing/reports', 'billing.reports.view'],
+    ['My fees', 'billing/my', 'billing.portal.view-own'],
+    ['Timetable analytics', 'academics/timetables/analytics', 'academic.view'],
     ['Gradebooks', 'academics/grades', 'academic.grades.book.view'],
     ['GPA & standing', 'academics/gpa', 'academic.records.gpa.manage'],
     ['Official records', 'academics/records', 'academic.records.issue'],
@@ -85,7 +90,9 @@ const tenantNavigation = [
     ['My assignments', 'my-assignments', 'assignments.view'],
     ['Assignment notifications', 'assignment-notifications', 'assignments.view'],
     ['Assignment management', 'assignments', 'assignments.submission.view'],
+    ['Assignment analytics', 'assignments/analytics', 'assignments.report.view'],
     ['Assessments', 'assessments', 'assessment.quiz.view'],
+    ['Assessment analytics', 'assessments/analytics', 'assessment.analytics.view'],
     ['Online examinations', 'exams', 'assessment.quiz.view'],
     ['Examiner marking', 'academics/examinations/marking', 'exams.view'],
     ['My practical & oral exams', 'examinations/my', 'exams.student.view-own'],
@@ -96,6 +103,7 @@ const tenantNavigation = [
     ['Extension requests', 'assignments/extensions', 'assignments.extension.review'],
     ['Enrollment administration', 'registrar/enrollment', 'enrollment.registrar.view'],
     ['Attendance operations', 'attendance', 'attendance.view'],
+    ['Attendance reports', 'attendance/reports', 'attendance.report.view'],
     ['My attendance', 'attendance/my', 'attendance.student.view'],
     ['Family attendance', 'attendance/guardian', 'attendance.guardian.view'],
 ];
@@ -111,11 +119,16 @@ export function WorkspaceLayout({ children, title, area }: WorkspaceLayoutProps)
             target === 'academics/catalog' ||
             target === 'academics/policies' ||
             target === 'academics/curriculum' ||
-            target === 'academics/grades'
+            target === 'academics/grades' ||
+            target === 'academics/analytics'
         ) {
             return academicConfig?.enabledFeatures.catalog ?? false;
         }
-        if (target === 'academics/examinations') {
+        if (
+            target === 'academics/examinations' ||
+            target === 'academics/timetables' ||
+            target === 'academics/timetables/analytics'
+        ) {
             return academicConfig?.enabledFeatures.calendar ?? false;
         }
         if (target === 'academics/quality') {

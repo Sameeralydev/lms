@@ -2,6 +2,7 @@
 
 use App\Domain\Academic\Attendance\AttendanceOutboxProcessor;
 use App\Domain\Admissions\AdmissionOutboxProcessor;
+use App\Domain\Analytics\AcademicAnalyticsScheduleDispatcher;
 use App\Domain\Assessments\QuizAssessmentWorkflow;
 use App\Domain\Assessments\QuizOutboxProcessor;
 use App\Domain\Assignments\AssignmentOutboxProcessor;
@@ -224,3 +225,12 @@ Schedule::command('assessments:attempts:expire')->everyMinute()->withoutOverlapp
 Schedule::command('sis:documents:apply-retention')->daily()->withoutOverlapping();
 Schedule::command('learning:activity:apply-retention')->daily()->withoutOverlapping();
 Schedule::command('learning:media:apply-retention')->daily()->withoutOverlapping();
+
+Artisan::command('analytics:reports:dispatch', function (AcademicAnalyticsScheduleDispatcher $dispatcher): int {
+    $count = $dispatcher->dispatchDue();
+    $this->info("Scheduled analytics reports queued: {$count}");
+
+    return 0;
+})->purpose('Queue due, authorized scheduled academic reports');
+
+Schedule::command('analytics:reports:dispatch')->everyMinute()->withoutOverlapping();

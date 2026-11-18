@@ -1,4 +1,4 @@
-﻿import { Link } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import { MetricCard } from '@/components/ui/metric-card';
 import { PageHeader } from '@/components/ui/page-header';
 import { WorkspaceLayout } from '@/layouts/workspace-layout';
@@ -17,18 +17,22 @@ export default function PlatformDashboard({
     metrics: Record<string, number>;
     recentEvents: Event[];
 }) {
+    const page = usePage<{ auth: { platformPermissions: string[] } }>();
+    const canCreateTenant = page.props.auth.platformPermissions.includes('platform.tenants.create');
     return (
         <WorkspaceLayout area="platform" title="Overview">
             <PageHeader
                 title="Platform overview"
                 description="Live counts from the platform database. These describe provisioned records, not production activity or commercial performance."
                 actions={
-                    <Link
-                        className="bg-brand-action inline-flex min-h-11 items-center rounded-lg px-4 text-sm font-semibold text-white"
-                        href="/platform/tenants/create"
-                    >
-                        Create institution
-                    </Link>
+                    canCreateTenant ? (
+                        <Link
+                            className="bg-brand-action inline-flex min-h-11 items-center rounded-lg px-4 text-sm font-semibold text-white"
+                            href="/platform/tenants/create"
+                        >
+                            Create institution
+                        </Link>
+                    ) : undefined
                 }
             />
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

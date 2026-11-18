@@ -74,6 +74,7 @@ type Props = {
             primary: boolean;
             emergency: boolean;
             canViewProfile: boolean;
+            canViewFinancialRecords: boolean;
             verifiedAt: string | null;
             revokedAt: string | null;
             identityUser: { id: number; name: string; email: string } | null;
@@ -1767,6 +1768,16 @@ export default function StudentShow({
                                                     Revoked {guardian.revokedAt}
                                                 </p>
                                             )}
+                                            {permissions.guardians &&
+                                                guardian.authorityStatus === 'verified' &&
+                                                guardian.revokedAt === null &&
+                                                guardian.identityUser && (
+                                                    <GuardianFinancialAccess
+                                                        tenant={tenant.slug}
+                                                        id={guardian.id}
+                                                        enabled={guardian.canViewFinancialRecords}
+                                                    />
+                                                )}
                                             {permissions.verifyGuardian &&
                                                 guardian.authorityStatus === 'pending' && (
                                                     <VerifyGuardian
@@ -2745,6 +2756,41 @@ function VerifyGuardian({
             </button>
             {Object.values(form.errors).length > 0 && (
                 <p role="alert" className="text-sm text-rose-700">
+                    {Object.values(form.errors).join(' ')}
+                </p>
+            )}
+        </form>
+    );
+}
+
+function GuardianFinancialAccess({ tenant, id, enabled }: { tenant: string; id: number; enabled: boolean }) {
+    const form = useForm({ can_view_financial_records: enabled });
+    return (
+        <form
+            className="border-border mt-3 flex flex-wrap items-center gap-3 border-t pt-3"
+            onSubmit={(event) => {
+                event.preventDefault();
+                form.patch(`/t/${tenant}/sis/guardians/${id}/financial-access`, { preserveScroll: true });
+            }}
+        >
+            <label className="text-text-primary flex items-center gap-2 text-xs">
+                <input
+                    type="checkbox"
+                    checked={form.data.can_view_financial_records}
+                    onChange={(event) =>
+                        form.setData('can_view_financial_records', event.currentTarget.checked)
+                    }
+                />
+                Allow this verified guardian to view learner invoices, payment history, and receipts
+            </label>
+            <button
+                disabled={form.processing}
+                className="border-border min-h-9 rounded-lg border px-3 text-xs font-semibold"
+            >
+                Save financial access
+            </button>
+            {Object.values(form.errors).length > 0 && (
+                <p role="alert" className="w-full text-sm text-rose-700">
                     {Object.values(form.errors).join(' ')}
                 </p>
             )}

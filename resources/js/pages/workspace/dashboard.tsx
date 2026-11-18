@@ -37,7 +37,14 @@ export default function WorkspaceDashboard({
                         />
                     ))}
                 </section>
-            ) : null}
+            ) : (
+                <section aria-label="Current workspace metrics" className="mt-6">
+                    <EmptyState
+                        title="No current metrics available"
+                        description="Your role has no operational summary data to display yet. Available services are listed below."
+                    />
+                </section>
+            )}
 
             <section aria-labelledby="workspace-services-heading" className="mt-8">
                 <div className="mb-4">
