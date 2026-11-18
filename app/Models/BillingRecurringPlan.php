@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -39,5 +40,11 @@ class BillingRecurringPlan extends AcademicRecord
     public function feeStructure(): BelongsTo
     {
         return $this->belongsTo(BillingFeeStructure::class, 'fee_structure_id');
+    }
+
+    /** @return HasMany<BillingRecurringRun, $this> */
+    public function runs(): HasMany
+    {
+        return $this->hasMany(BillingRecurringRun::class, 'plan_id')->latest('last_attempt_at');
     }
 }

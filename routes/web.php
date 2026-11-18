@@ -137,12 +137,14 @@ Route::middleware('auth')->group(function (): void {
             Route::post('/concessions/{concessionId}/revoke', [BillingLifecycleController::class, 'revokeConcession'])->whereNumber('concessionId')->middleware('tenant.permission:billing.concessions.manage')->name('concessions.revoke');
             Route::post('/invoices/{invoiceId}/installments', [BillingLifecycleController::class, 'storeInstallments'])->whereNumber('invoiceId')->middleware('tenant.permission:billing.installments.manage')->name('installments.store');
             Route::post('/installment-plans/{planId}/publish', [BillingLifecycleController::class, 'publishInstallments'])->whereNumber('planId')->middleware('tenant.permission:billing.installments.manage')->name('installments.publish');
+            Route::post('/installment-plans/{planId}/amend', [BillingLifecycleController::class, 'amendInstallments'])->whereNumber('planId')->middleware('tenant.permission:billing.installments.manage')->name('installments.amend');
             Route::post('/adjustments', [BillingLifecycleController::class, 'storeAdjustment'])->middleware('tenant.permission:billing.adjustments.manage')->name('adjustments.store');
             Route::post('/adjustments/{adjustmentId}/review', [BillingLifecycleController::class, 'reviewAdjustment'])->whereNumber('adjustmentId')->middleware('tenant.permission:billing.adjustments.approve')->name('adjustments.review');
             Route::post('/adjustments/{adjustmentId}/post', [BillingLifecycleController::class, 'postAdjustment'])->whereNumber('adjustmentId')->middleware('tenant.permission:billing.adjustments.post')->name('adjustments.post');
             Route::post('/adjustments/{adjustmentId}/reverse', [BillingLifecycleController::class, 'reverseAdjustment'])->whereNumber('adjustmentId')->middleware('tenant.permission:billing.adjustments.manage')->name('adjustments.reverse');
             Route::get('/reports', [BillingController::class, 'reports'])->middleware('tenant.permission:billing.reports.view')->name('reports');
             Route::get('/reports.csv', [BillingController::class, 'exportReports'])->middleware('tenant.permission:billing.reports.view')->name('reports.csv');
+            Route::get('/reports.pdf', [BillingController::class, 'printReports'])->middleware('tenant.permission:billing.reports.view')->name('reports.pdf');
             Route::post('/fee-heads', [BillingController::class, 'storeFeeHead'])->middleware('tenant.permission:billing.fees.manage')->name('fee-heads.store');
             Route::put('/fee-heads/{headId}', [BillingController::class, 'updateFeeHead'])->middleware('tenant.permission:billing.fees.manage')->whereNumber('headId')->name('fee-heads.update');
             Route::post('/structures', [BillingController::class, 'storeStructure'])->middleware('tenant.permission:billing.fees.manage')->name('structures.store');
@@ -153,7 +155,13 @@ Route::middleware('auth')->group(function (): void {
             Route::post('/invoices/bulk', [BillingLifecycleController::class, 'bulkIssue'])->middleware('tenant.permission:billing.invoices.issue')->name('invoices.bulk');
             Route::post('/recurring-plans', [BillingLifecycleController::class, 'storeRecurringPlan'])->middleware(['tenant.permission:billing.assignments.manage', 'tenant.permission:billing.invoices.issue'])->name('recurring.store');
             Route::put('/enrollment-assessment', [BillingLifecycleController::class, 'configureEnrollmentAssessment'])->middleware('tenant.permission:billing.assignments.manage')->name('enrollment-assessment.update');
+            Route::post('/fee-applicability', [BillingLifecycleController::class, 'storeFeeApplicability'])->middleware('tenant.permission:billing.fees.manage')->name('fee-applicability.store');
+            Route::patch('/fee-applicability/{ruleId}/status', [BillingLifecycleController::class, 'transitionFeeApplicability'])->whereNumber('ruleId')->middleware('tenant.permission:billing.fees.manage')->name('fee-applicability.status');
+            Route::post('/fee-applicability/preview', [BillingLifecycleController::class, 'previewFeeApplicability'])->middleware('tenant.permission:billing.fees.manage')->name('fee-applicability.preview');
+            Route::put('/proration-policy', [BillingLifecycleController::class, 'saveProrationPolicy'])->middleware('tenant.permission:billing.fees.manage')->name('proration-policy.update');
+            Route::post('/proration-preview', [BillingLifecycleController::class, 'previewProration'])->middleware('tenant.permission:billing.fees.manage')->name('proration-preview');
             Route::patch('/recurring-plans/{planId}/status', [BillingLifecycleController::class, 'recurringPlanStatus'])->whereNumber('planId')->middleware('tenant.permission:billing.assignments.manage')->name('recurring.status');
+            Route::post('/recurring-plans/{planId}/retry', [BillingLifecycleController::class, 'retryRecurringPlan'])->whereNumber('planId')->middleware(['tenant.permission:billing.assignments.manage', 'tenant.permission:billing.invoices.issue'])->name('recurring.retry');
             Route::get('/invoices/{invoiceId}', [BillingController::class, 'showInvoice'])->middleware('tenant.permission:billing.invoices.view')->whereNumber('invoiceId')->name('invoices.show');
             Route::get('/invoices/{invoiceId}/print', [BillingController::class, 'printInvoice'])->middleware('tenant.permission:billing.invoices.view')->whereNumber('invoiceId')->name('invoices.print');
             Route::post('/invoices/{invoiceId}/cancel', [BillingController::class, 'cancelInvoice'])->middleware('tenant.permission:billing.invoices.cancel')->whereNumber('invoiceId')->name('invoices.cancel');

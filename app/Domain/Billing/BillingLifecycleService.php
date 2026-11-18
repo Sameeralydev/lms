@@ -11,6 +11,7 @@ use App\Models\BillingConcessionEvent;
 use App\Models\BillingFeeAssignment;
 use App\Models\BillingFeeStructure;
 use App\Models\BillingInstallment;
+use App\Models\BillingInstallmentEvent;
 use App\Models\BillingInstallmentPlan;
 use App\Models\BillingInvoice;
 use App\Models\BillingRecurringPlan;
@@ -196,6 +197,7 @@ final class BillingLifecycleService
             foreach ($rows as $index => $item) {
                 BillingInstallment::query()->create(['plan_id' => $plan->getKey(), 'sequence' => $index + 1, 'due_on' => $item['due_on'], 'amount' => BillingMoney::fromMinor(BillingMoney::toMinor($item['amount'])), 'status' => 'scheduled']);
             }
+            $this->installmentEvent($plan, $actor, 'created', null, null, ['after' => $this->installmentSnapshot($plan->load('installments'))]);
             $this->audit->record('billing.installment_plan.created', $actor, (int) $membership->tenant_id, $plan, ['invoice_id' => $invoiceId, 'count' => count($rows)]);
 
             return $plan->load('installments');
@@ -218,8 +220,111 @@ final class BillingLifecycleService
                 throw ValidationException::withMessages(['installments' => 'The schedule no longer reconciles to the invoice balance.']);
             }
             $plan->forceFill(['status' => 'published', 'published_by' => $actor->getKey(), 'published_at' => now()])->save();
+            $this->installmentEvent($plan, $actor, 'published', null, null, ['after' => $this->installmentSnapshot($plan)]);
             $this->audit->record('billing.installment_plan.published', $actor, (int) $membership->tenant_id, $plan, ['invoice_id' => (int) $plan->invoice_id, 'count' => (int) $plan->installment_count]);
             $this->notifyInvoiceStudent($plan->invoice, 'billing.installments.published', 'An installment schedule is available.', ['installment_count' => (int) $plan->installment_count]);
+
+            return $plan;
+        }, 3);
+    }
+
+    /** @param list<array{sequence?:int|null,due_on:string,amount:string}> $rows */
+    public function amendInstallments(int $planId, array $rows, string $reason, string $requestKey, User $actor): BillingInstallmentPlan
+    {
+        $membership = $this->context->membership();
+        abort_unless($membership->hasPermission('billing.installments.manage'), 403);
+        if ($rows === [] || count($rows) > 36 || trim($reason) === '') {
+            throw ValidationException::withMessages(['installments' => 'A reason and between 1 and 36 revised installments are required.']);
+        }
+        $hash = hash('sha256', json_encode(['rows' => $rows, 'reason' => trim($reason)], JSON_THROW_ON_ERROR));
+
+        return DB::transaction(function () use ($planId, $rows, $reason, $requestKey, $hash, $actor, $membership): BillingInstallmentPlan {
+            $plan = BillingInstallmentPlan::query()->with(['invoice', 'installments'])->lockForUpdate()->findOrFail($planId);
+            $invoice = BillingInvoice::query()->lockForUpdate()->findOrFail($plan->invoice_id);
+            $this->assertFinancialScope($invoice->institution_id, $invoice->campus_id, $membership);
+            if ($plan->status !== 'published' || $invoice->status === 'cancelled') {
+                throw new ConflictHttpException('Only a published schedule for a live invoice can be amended.');
+            }
+
+            $priorEvent = BillingInstallmentEvent::query()->where('request_key', $requestKey)->lockForUpdate()->first();
+            if ($priorEvent !== null) {
+                if ((int) $priorEvent->plan_id !== (int) $plan->getKey() || $priorEvent->request_hash !== $hash) {
+                    throw ValidationException::withMessages(['request_key' => 'This amendment key is already bound to different schedule data.']);
+                }
+
+                return $plan->fresh(['invoice', 'installments']);
+            }
+
+            $active = $plan->installments->filter(static fn (BillingInstallment $item): bool => $item->status !== 'cancelled')->sortBy('sequence')->values();
+            $remainingPaid = BillingMoney::toMinor((string) $invoice->paid_amount);
+            $paidBySequence = [];
+            foreach ($active as $item) {
+                $amountMinor = BillingMoney::toMinor((string) $item->amount);
+                $paidBySequence[(int) $item->sequence] = min($remainingPaid, $amountMinor);
+                $remainingPaid -= $paidBySequence[(int) $item->sequence];
+            }
+
+            $before = $this->installmentSnapshot($plan);
+            $existingBySequence = $active->keyBy('sequence');
+            $seenSequences = [];
+            $totalMinor = 0;
+            $previousDate = null;
+            $normalized = [];
+            $nextSequence = (int) $plan->installments->max('sequence');
+            foreach ($rows as $row) {
+                $sequence = isset($row['sequence']) ? (int) $row['sequence'] : null;
+                if ($sequence !== null) {
+                    if (! $existingBySequence->has($sequence) || isset($seenSequences[$sequence])) {
+                        throw ValidationException::withMessages(['installments' => 'Each existing installment sequence may appear at most once.']);
+                    }
+                    $seenSequences[$sequence] = true;
+                    $old = $existingBySequence->get($sequence);
+                    $amountMinor = BillingMoney::toMinor($row['amount']);
+                    if ($paidBySequence[$sequence] > 0 && (Carbon::parse($old->due_on)->toDateString() !== Carbon::parse($row['due_on'])->toDateString()
+                        || BillingMoney::toMinor((string) $old->amount) !== $amountMinor)) {
+                        throw ValidationException::withMessages(['installments' => 'An installment with posted payments is immutable; amend only unpaid installments.']);
+                    }
+                } else {
+                    $sequence = ++$nextSequence;
+                    $amountMinor = BillingMoney::toMinor($row['amount']);
+                }
+                $date = Carbon::parse($row['due_on']);
+                if ($amountMinor < 1 || ($previousDate !== null && $date->lt($previousDate))) {
+                    throw ValidationException::withMessages(['installments' => 'Installment amounts must be positive and due dates ordered by sequence.']);
+                }
+                $totalMinor += $amountMinor;
+                $previousDate = $date;
+                $normalized[] = ['sequence' => $sequence, 'due_on' => $date->toDateString(), 'amount_minor' => $amountMinor];
+            }
+
+            if ($totalMinor !== BillingMoney::toMinor((string) $invoice->adjusted_total)) {
+                throw ValidationException::withMessages(['installments' => 'The amended schedule must still reconcile to the full invoice obligation.']);
+            }
+            foreach ($active as $item) {
+                if (! isset($seenSequences[(int) $item->sequence]) && ($paidBySequence[(int) $item->sequence] ?? 0) > 0) {
+                    throw ValidationException::withMessages(['installments' => 'An installment with posted payments cannot be removed.']);
+                }
+                if (! isset($seenSequences[(int) $item->sequence])) {
+                    $item->forceFill(['status' => 'cancelled'])->save();
+                }
+            }
+            foreach ($normalized as $item) {
+                $installment = $existingBySequence->get($item['sequence']);
+                if ($installment !== null) {
+                    $installment->forceFill(['due_on' => $item['due_on'], 'amount' => BillingMoney::fromMinor($item['amount_minor'])])->save();
+                } else {
+                    BillingInstallment::query()->create([
+                        'tenant_id' => $membership->tenant_id, 'plan_id' => $plan->getKey(), 'sequence' => $item['sequence'],
+                        'due_on' => $item['due_on'], 'amount' => BillingMoney::fromMinor($item['amount_minor']), 'status' => 'scheduled',
+                    ]);
+                }
+            }
+            $plan->forceFill(['installment_count' => count($normalized), 'version' => (int) $plan->version + 1])->save();
+            $plan->refresh()->load(['invoice', 'installments']);
+            $after = $this->installmentSnapshot($plan);
+            $this->installmentEvent($plan, $actor, 'amended', $requestKey, $hash, ['reason' => mb_substr(trim($reason), 0, 500), 'before' => $before, 'after' => $after], trim($reason));
+            $this->audit->record('billing.installment_plan.amended', $actor, (int) $membership->tenant_id, $plan, ['invoice_id' => (int) $invoice->getKey(), 'version' => (int) $plan->version, 'reason' => mb_substr(trim($reason), 0, 500)]);
+            $this->notifyInvoiceStudent($invoice, 'billing.installments.amended', 'The installment schedule for an invoice was updated.', ['installment_plan_id' => (int) $plan->getKey(), 'version' => (int) $plan->version]);
 
             return $plan;
         }, 3);
@@ -304,6 +409,7 @@ final class BillingLifecycleService
             }
             $outstanding = $nextTotal - $paid;
             $invoice->forceFill(['adjusted_total' => BillingMoney::fromMinor($nextTotal), 'outstanding_amount' => BillingMoney::fromMinor($outstanding), 'status' => $outstanding === 0 ? 'paid' : ($paid > 0 ? 'partially_paid' : 'issued')])->save();
+            $this->reconcilePublishedInstallmentPlan($invoice, $actor, $nextTotal - $currentTotal, 'Adjustment '.$row->adjustment_number.' posted.');
             $row->forceFill(['status' => 'posted', 'posted_at' => now()])->save();
             if ($row->reverses_adjustment_id !== null) {
                 $original = BillingAdjustment::query()->lockForUpdate()->findOrFail($row->reverses_adjustment_id);
@@ -419,6 +525,28 @@ final class BillingLifecycleService
         }, 3);
     }
 
+    public function retryRecurringPlan(int $id, User $actor): BillingRecurringPlan
+    {
+        $membership = $this->context->membership();
+        abort_unless($membership->hasPermission('billing.assignments.manage') && $membership->hasPermission('billing.invoices.issue'), 403);
+
+        return DB::transaction(function () use ($id, $actor, $membership): BillingRecurringPlan {
+            $plan = BillingRecurringPlan::query()->with('runs')->lockForUpdate()->findOrFail($id);
+            $this->assertFinancialScope($plan->institution_id, $plan->campus_id, $membership);
+            $latestRun = $plan->runs->first();
+            if ($plan->status !== 'active' || $latestRun === null || $latestRun->status !== 'failed'
+                || $latestRun->period_start !== $plan->period_start->toDateString() || $latestRun->period_end !== $plan->period_end->toDateString()) {
+                throw new ConflictHttpException('Only the current failed billing period of an active recurring plan can be retried.');
+            }
+            $plan->forceFill(['next_run_at' => now()])->save();
+            $this->audit->record('billing.recurring_plan.retry_scheduled', $actor, (int) $membership->tenant_id, $plan, [
+                'period_start' => $plan->period_start->toDateString(), 'period_end' => $plan->period_end->toDateString(), 'previous_attempts' => (int) $latestRun->attempts,
+            ]);
+
+            return $plan;
+        }, 3);
+    }
+
     public function configureEnrollmentFeeAssessment(?int $feeStructureId, User $actor): void
     {
         $membership = $this->context->membership();
@@ -434,6 +562,44 @@ final class BillingLifecycleService
             TenantSetting::query()->where('key', 'billing.enrollment_fee_assessment')->delete();
         }
         $this->audit->record('billing.enrollment_assessment.configuration_updated', $actor, (int) $membership->tenant_id, null, ['enabled' => $feeStructureId !== null, 'fee_structure_id' => $feeStructureId]);
+    }
+
+    /** @param array{enabled:bool,method:string,effective_from:string,effective_until:?string} $policy */
+    public function saveProrationPolicy(array $policy, User $actor): void
+    {
+        $membership = $this->context->membership();
+        abort_unless($membership->hasPermission('billing.fees.manage'), 403);
+        if (! in_array($policy['method'], ['calendar_days'], true)
+            || ($policy['effective_until'] !== null && Carbon::parse($policy['effective_until'])->lt(Carbon::parse($policy['effective_from'])))) {
+            throw ValidationException::withMessages(['method' => 'Choose a supported calculation method and valid effective dates.']);
+        }
+        TenantSetting::query()->updateOrCreate(['key' => 'billing.proration_policy'], ['tenant_id' => $membership->tenant_id, 'value' => $policy]);
+        $this->audit->record('billing.proration.policy_updated', $actor, (int) $membership->tenant_id, null, [
+            'enabled' => $policy['enabled'], 'method' => $policy['method'], 'effective_from' => $policy['effective_from'], 'effective_until' => $policy['effective_until'],
+        ]);
+    }
+
+    /** @param array{amount:string,period_start:string,period_end:string,charge_start:string,charge_end:string} $input
+     * @return array{method:string,full_amount:string,eligible_days:int,period_days:int,prorated_amount:string,eligible_from:string,eligible_until:string}
+     */
+    public function previewProration(array $input, User $actor): array
+    {
+        $membership = $this->context->membership();
+        abort_unless($membership->hasPermission('billing.fees.manage'), 403);
+        $policy = TenantSetting::query()->where('key', 'billing.proration_policy')->first()?->value;
+        if (! is_array($policy) || ! is_bool($policy['enabled'] ?? null) || ! is_string($policy['method'] ?? null)
+            || ! is_string($policy['effective_from'] ?? null) || (($policy['effective_until'] ?? null) !== null && ! is_string($policy['effective_until']))) {
+            throw ValidationException::withMessages(['policy' => 'Configure a proration policy before requesting a preview.']);
+        }
+        $result = app(BillingProrationCalculator::class)->preview(
+            $input['amount'], $input['period_start'], $input['period_end'], $input['charge_start'], $input['charge_end'], $policy,
+        );
+        $this->audit->record('billing.proration.previewed', $actor, (int) $membership->tenant_id, null, [
+            'method' => $result['method'], 'period_days' => $result['period_days'], 'eligible_days' => $result['eligible_days'],
+            'prorated_amount' => $result['prorated_amount'],
+        ]);
+
+        return $result;
     }
 
     private function assertStudentScope(SisStudent $student, TenantMembership $membership): void
@@ -473,6 +639,89 @@ final class BillingLifecycleService
     private function notifyInvoiceStudent(BillingInvoice $invoice, string $event, string $message, array $details): void
     {
         $this->notifyStudent((int) $invoice->student_id, $event, $message, [...$details, 'invoice_number' => (string) $invoice->invoice_number]);
+    }
+
+    /** @return list<array{sequence:int,due_on:string,amount:string,status:string}> */
+    private function installmentSnapshot(BillingInstallmentPlan $plan): array
+    {
+        return $plan->installments->sortBy('sequence')->map(static fn (BillingInstallment $item): array => [
+            'sequence' => (int) $item->sequence,
+            'due_on' => Carbon::parse($item->due_on)->toDateString(),
+            'amount' => (string) $item->amount,
+            'status' => (string) $item->status,
+        ])->values()->all();
+    }
+
+    /** @param array<string,mixed> $snapshot */
+    private function installmentEvent(BillingInstallmentPlan $plan, User $actor, string $event, ?string $requestKey, ?string $requestHash, array $snapshot, ?string $reason = null): void
+    {
+        BillingInstallmentEvent::query()->create([
+            'plan_id' => $plan->getKey(), 'actor_user_id' => $actor->getKey(), 'event_type' => $event,
+            'version' => (int) $plan->version, 'request_key' => $requestKey, 'request_hash' => $requestHash, 'reason' => $reason,
+            'snapshot' => $snapshot, 'occurred_at' => now(),
+        ]);
+    }
+
+    private function reconcilePublishedInstallmentPlan(BillingInvoice $invoice, User $actor, int $deltaMinor, string $reason): void
+    {
+        if ($deltaMinor === 0) {
+            return;
+        }
+        $plan = BillingInstallmentPlan::query()->with('installments')->where('invoice_id', $invoice->getKey())->lockForUpdate()->first();
+        if ($plan === null) {
+            return;
+        }
+        $active = $plan->installments->filter(static fn (BillingInstallment $item): bool => $item->status !== 'cancelled')->sortBy('sequence')->values();
+        $before = $this->installmentSnapshot($plan);
+        $remainingPaid = BillingMoney::toMinor((string) $invoice->paid_amount);
+        $paidBySequence = [];
+        foreach ($active as $item) {
+            $amountMinor = BillingMoney::toMinor((string) $item->amount);
+            $paidBySequence[(int) $item->sequence] = min($remainingPaid, $amountMinor);
+            $remainingPaid -= $paidBySequence[(int) $item->sequence];
+        }
+
+        if ($deltaMinor < 0) {
+            $reduction = -$deltaMinor;
+            foreach ($active->sortByDesc('sequence') as $item) {
+                $sequence = (int) $item->sequence;
+                $amountMinor = BillingMoney::toMinor((string) $item->amount);
+                $outstandingMinor = $amountMinor - ($paidBySequence[$sequence] ?? 0);
+                $applied = min($reduction, $outstandingMinor);
+                if ($applied === 0) {
+                    continue;
+                }
+                $nextAmount = $amountMinor - $applied;
+                $item->forceFill($nextAmount === 0 ? ['status' => 'cancelled'] : ['amount' => BillingMoney::fromMinor($nextAmount)])->save();
+                $reduction -= $applied;
+                if ($reduction === 0) {
+                    break;
+                }
+            }
+            if ($reduction !== 0) {
+                throw new \LogicException('Installment schedule could not absorb an approved invoice credit.');
+            }
+        } else {
+            $lastUnpaid = $active->sortByDesc('sequence')->first(static fn (BillingInstallment $item): bool => ($paidBySequence[(int) $item->sequence] ?? 0) < BillingMoney::toMinor((string) $item->amount));
+            if ($lastUnpaid !== null) {
+                $amount = BillingMoney::toMinor((string) $lastUnpaid->amount) + $deltaMinor;
+                $lastUnpaid->forceFill(['amount' => BillingMoney::fromMinor($amount)])->save();
+            } else {
+                BillingInstallment::query()->create([
+                    'plan_id' => $plan->getKey(), 'sequence' => (int) $plan->installments->max('sequence') + 1,
+                    'due_on' => $invoice->due_on->toDateString(), 'amount' => BillingMoney::fromMinor($deltaMinor), 'status' => 'scheduled',
+                ]);
+            }
+        }
+
+        $plan->refresh()->load('installments');
+        $plan->forceFill([
+            'installment_count' => $plan->installments->filter(static fn (BillingInstallment $item): bool => $item->status !== 'cancelled')->count(),
+            'version' => (int) $plan->version + 1,
+        ])->save();
+        $plan->refresh()->load('installments');
+        $deltaSnapshot = $deltaMinor < 0 ? '-'.BillingMoney::fromMinor(-$deltaMinor) : BillingMoney::fromMinor($deltaMinor);
+        $this->installmentEvent($plan, $actor, 'adjustment_reconciled', null, null, ['reason' => $reason, 'delta' => $deltaSnapshot, 'before' => $before, 'after' => $this->installmentSnapshot($plan)], $reason);
     }
 
     /** @param array<string, mixed> $metadata */

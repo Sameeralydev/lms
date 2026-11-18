@@ -32,6 +32,12 @@ final class Phase18PaymentWorkflowTest extends TestCase
         $learner = User::factory()->create();
         $this->linkStudentUser($tenant, $membership, $student, $learner);
         $invoice = $this->invoice($tenant, $membership, $owner, $student, '100.00');
+        $lifecycleBase = "/t/{$tenant->slug}/billing";
+        $this->actingAs($owner)->post("{$lifecycleBase}/invoices/{$invoice->getKey()}/installments", ['installments' => [
+            ['due_on' => '2026-11-20', 'amount' => '40.00'], ['due_on' => '2026-11-30', 'amount' => '60.00'],
+        ]])->assertSessionHasNoErrors();
+        $planId = (int) \DB::table('billing_installment_plans')->where('invoice_id', $invoice->getKey())->value('id');
+        $this->actingAs($owner)->post("{$lifecycleBase}/installment-plans/{$planId}/publish")->assertSessionHasNoErrors();
         $base = "/t/{$tenant->slug}/billing/payments";
         $payload = [
             'student_id' => $student->getKey(), 'method' => 'cash', 'amount' => '60.00', 'currency' => 'USD',
@@ -50,7 +56,10 @@ final class Phase18PaymentWorkflowTest extends TestCase
         $paymentId = (int) \DB::table('billing_payments')->where('tenant_id', $tenant->getKey())->value('id');
         $this->actingAs($owner)->get("/t/{$tenant->slug}/billing/payments/{$paymentId}/receipt")->assertOk()->assertHeader('Content-Type', 'application/pdf');
         $this->assertDatabaseHas('audit_events', ['tenant_id' => $tenant->getKey(), 'event_type' => 'billing.payment.confirmed']);
-        self::assertSame(1, \DB::table('notifications')->where('notifiable_type', User::class)->where('notifiable_id', $learner->getKey())->count(), 'Idempotent replay must not duplicate payment notifications.');
+        $learnerNotifications = \DB::table('notifications')->where('notifiable_type', User::class)->where('notifiable_id', $learner->getKey())->get(['data'])
+            ->map(static fn ($row): array => json_decode($row->data, true) ?: [])->all();
+        self::assertSame(2, count($learnerNotifications), 'Plan publication and payment confirmation each notify once; idempotent replay adds neither.');
+        self::assertSame(1, count(array_filter($learnerNotifications, static fn (array $data): bool => ($data['type'] ?? null) === 'billing.payment.confirmed')));
         $this->actingAs($owner)->get("/t/{$tenant->slug}/billing/reports")->assertOk()->assertInertia(fn ($page) => $page
             ->where('collections.0.currency', 'USD')->where('collections.0.method', 'cash')
             ->where('collections.0.payment_count', 1)->where('collections.0.net_confirmed_amount', '60.00'));
@@ -65,6 +74,11 @@ final class Phase18PaymentWorkflowTest extends TestCase
             ->where('currency_totals.0.credit', '60.00')->where('currency_totals.0.balance', '40.00'));
         $this->actingAs($owner)->post($base, [...$payload, 'amount' => '61.00'])->assertSessionHasErrors('idempotency_key');
         self::assertSame(1, \DB::table('billing_payments')->where('tenant_id', $tenant->getKey())->count());
+        $this->actingAs($owner)->get("{$lifecycleBase}/invoices/{$invoice->getKey()}")->assertOk()->assertInertia(fn ($page) => $page
+            ->where('invoice.installments.0.paid_amount', '40.00')->where('invoice.installments.0.outstanding_amount', '0.00')
+            ->where('invoice.installments.1.paid_amount', '20.00')->where('invoice.installments.1.outstanding_amount', '40.00'));
+        $this->actingAs($owner)->get("{$lifecycleBase}/reports")->assertOk()->assertInertia(fn ($page) => $page
+            ->where('installment_summary.0.paid_total', '60.00')->where('installment_summary.0.outstanding_total', '40.00'));
     }
 
     public function test_bank_transfer_does_not_settle_until_independent_review_and_replay_is_idempotent(): void

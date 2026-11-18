@@ -3,16 +3,19 @@
 namespace App\Http\Controllers\Workspace;
 
 use App\Domain\Audit\AuditRecorder;
+use App\Domain\Billing\BillingFeeApplicability;
+use App\Domain\Billing\BillingInstallmentSchedule;
 use App\Domain\Billing\BillingInvoiceIssuer;
 use App\Domain\Billing\BillingInvoiceReport;
 use App\Domain\Billing\BillingLifecycleService;
 use App\Domain\Billing\BillingStudentLedger;
 use App\Domain\Tenancy\TenantContext;
 use App\Http\Controllers\Controller;
+use App\Models\AcademicProgram;
 use App\Models\BillingAdjustment;
 use App\Models\BillingConcession;
+use App\Models\BillingFeeApplicabilityRule;
 use App\Models\BillingFeeAssignment;
-use App\Models\BillingInstallment;
 use App\Models\BillingInstallmentPlan;
 use App\Models\BillingInvoice;
 use App\Models\BillingRecurringPlan;
@@ -35,7 +38,7 @@ final class BillingLifecycleController extends Controller
     {
         $membership = $context->membership();
         abort_unless($membership->hasPermission('billing.assignments.manage') || $membership->hasPermission('billing.concessions.manage')
-            || $membership->hasPermission('billing.installments.manage') || $membership->hasPermission('billing.adjustments.manage')
+            || $membership->hasPermission('billing.installments.manage') || $membership->hasPermission('billing.adjustments.manage') || $membership->hasPermission('billing.fees.manage')
             || $membership->hasPermission('billing.ledger.view'), 403);
         $canManageStudents = $membership->hasPermission('billing.assignments.manage') || $membership->hasPermission('billing.concessions.manage') || $membership->hasPermission('billing.invoices.issue');
         $canBrowseInvoices = $membership->hasPermission('billing.invoices.view') || $membership->hasPermission('billing.invoices.issue');
@@ -49,6 +52,24 @@ final class BillingLifecycleController extends Controller
             'structures' => DB::table('billing_fee_structures')->when(! $canManageStudents && ! $membership->hasPermission('billing.fees.manage'), fn ($q) => $q->whereRaw('1 = 0'))->where('tenant_id', $membership->tenant_id)->where('institution_id', $membership->institution_id)->where('status', 'active')
                 ->when($membership->campus_id !== null, fn ($query) => $query->where(fn ($q) => $q->whereNull('campus_id')->orWhere('campus_id', $membership->campus_id)))
                 ->orderBy('name')->get(['id', 'name', 'currency', 'frequency', 'effective_from', 'effective_until']),
+            'fee_applicability_rules' => BillingFeeApplicabilityRule::query()->when(! $membership->hasPermission('billing.fees.manage'), fn ($q) => $q->whereRaw('1 = 0'))
+                ->where('tenant_id', $membership->tenant_id)->where('institution_id', $membership->institution_id)
+                ->when($membership->campus_id !== null, fn ($q) => $q->where(fn ($scope) => $scope->whereNull('campus_id')->orWhere('campus_id', $membership->campus_id)))
+                ->with('feeStructure:id,name,currency')->latest()->limit(100)->get()->map(static fn (BillingFeeApplicabilityRule $rule): array => [
+                    'id' => (int) $rule->getKey(), 'fee_structure' => $rule->feeStructure->name, 'currency' => $rule->feeStructure->currency,
+                    'campus_id' => $rule->campus_id === null ? null : (int) $rule->campus_id, 'academic_program_id' => $rule->academic_program_id === null ? null : (int) $rule->academic_program_id,
+                    'academic_period_id' => $rule->academic_period_id === null ? null : (int) $rule->academic_period_id,
+                    'effective_from' => Carbon::parse($rule->effective_from)->toDateString(), 'effective_until' => $rule->effective_until === null ? null : Carbon::parse($rule->effective_until)->toDateString(), 'status' => $rule->status,
+                ])->all(),
+            'academic_programs' => AcademicProgram::query()->when(! $membership->hasPermission('billing.fees.manage'), fn ($q) => $q->whereRaw('1 = 0'))
+                ->where('tenant_id', $membership->tenant_id)->where('institution_id', $membership->institution_id)->where('status', 'active')->orderBy('title')->get(['id', 'title', 'code']),
+            'academic_periods' => DB::table('academic_periods')->join('academic_years', function ($join): void {
+                $join->on('academic_years.id', '=', 'academic_periods.academic_year_id')->on('academic_years.tenant_id', '=', 'academic_periods.tenant_id');
+            })->when(! $membership->hasPermission('billing.fees.manage'), fn ($q) => $q->whereRaw('1 = 0'))->where('academic_periods.tenant_id', $membership->tenant_id)
+                ->where('academic_years.institution_id', $membership->institution_id)
+                ->when($membership->campus_id !== null, fn ($q) => $q->where(fn ($scope) => $scope->whereNull('academic_years.campus_id')->orWhere('academic_years.campus_id', $membership->campus_id)))
+                ->where('academic_periods.status', 'active')->orderBy('academic_periods.starts_on')
+                ->get(['academic_periods.id', 'academic_periods.name', 'academic_periods.code', 'academic_periods.starts_on', 'academic_periods.ends_on']),
             'invoices' => BillingInvoice::query()->when(! $canBrowseInvoices, fn ($q) => $q->whereRaw('1 = 0'))->where('institution_id', $membership->institution_id)->when($membership->campus_id !== null, fn ($q) => $q->where('campus_id', $membership->campus_id))
                 ->whereNotIn('status', ['cancelled'])->with('student:id,student_number,legal_first_name,legal_last_name')->latest('issued_at')->limit(200)->get()
                 ->map(static fn (BillingInvoice $invoice): array => ['id' => (int) $invoice->getKey(), 'number' => $invoice->invoice_number, 'student_id' => (int) $invoice->student_id, 'student' => $invoice->student->student_number.' · '.trim($invoice->student->legal_first_name.' '.$invoice->student->legal_last_name), 'currency' => $invoice->currency, 'amount_due' => (string) $invoice->adjusted_total, 'outstanding' => (string) $invoice->outstanding_amount, 'status' => $invoice->status])->all(),
@@ -57,7 +78,8 @@ final class BillingLifecycleController extends Controller
             'concessions' => $scope(BillingConcession::query()->when(! $membership->hasPermission('billing.concessions.manage') && ! $membership->hasPermission('billing.concessions.approve'), fn ($q) => $q->whereRaw('1 = 0')))->with('student:id,student_number,legal_first_name,legal_last_name')->latest()->limit(100)->get()
                 ->map(static fn (BillingConcession $row): array => ['id' => (int) $row->getKey(), 'student' => $row->student->student_number.' · '.trim($row->student->legal_first_name.' '.$row->student->legal_last_name), 'code' => $row->code, 'name' => $row->name, 'kind' => $row->kind, 'value' => (string) $row->value, 'status' => $row->status, 'requested_by' => (int) $row->requested_by])->all(),
             'installment_plans' => BillingInstallmentPlan::query()->when(! $membership->hasPermission('billing.installments.manage'), fn ($q) => $q->whereRaw('1 = 0'))->where('tenant_id', $membership->tenant_id)->whereHas('invoice', fn ($q) => $q->where('institution_id', $membership->institution_id)->when($membership->campus_id !== null, fn ($nested) => $nested->where('campus_id', $membership->campus_id)))
-                ->with(['invoice:id,invoice_number,student_id', 'installments'])->latest()->limit(100)->get()->map(static fn (BillingInstallmentPlan $row): array => ['id' => (int) $row->getKey(), 'invoice' => $row->invoice->invoice_number, 'status' => $row->status, 'installments' => $row->installments->map(static fn (BillingInstallment $item): array => ['sequence' => $item->sequence, 'due_on' => Carbon::parse($item->due_on)->toDateString(), 'amount' => (string) $item->amount])->all()])->all(),
+                ->with(['invoice:id,invoice_number,student_id,paid_amount,adjusted_total,currency', 'installments'])->latest()->limit(100)->get()
+                ->map(fn (BillingInstallmentPlan $row): array => $this->installmentPlanData($row))->all(),
             'adjustments' => BillingAdjustment::query()->when(! $membership->hasPermission('billing.adjustments.manage') && ! $membership->hasPermission('billing.adjustments.approve') && ! $membership->hasPermission('billing.adjustments.post'), fn ($q) => $q->whereRaw('1 = 0'))->where('tenant_id', $membership->tenant_id)->whereHas('invoice', fn ($q) => $q->where('institution_id', $membership->institution_id)->when($membership->campus_id !== null, fn ($nested) => $nested->where('campus_id', $membership->campus_id)))
                 ->with('invoice:id,invoice_number')->latest()->limit(100)->get()->map(static fn (BillingAdjustment $row): array => ['id' => (int) $row->getKey(), 'number' => $row->adjustment_number, 'invoice' => $row->invoice->invoice_number, 'kind' => $row->kind, 'amount' => (string) $row->amount, 'status' => $row->status, 'requested_by' => (int) $row->requested_by, 'reviewed_by' => $row->reviewed_by === null ? null : (int) $row->reviewed_by])->all(),
             'permissions' => [
@@ -67,16 +89,35 @@ final class BillingLifecycleController extends Controller
                 'adjustment_post' => $membership->hasPermission('billing.adjustments.post'), 'ledger' => $membership->hasPermission('billing.ledger.view'),
                 'issue' => $membership->hasPermission('billing.invoices.issue'),
                 'recurring' => $membership->hasPermission('billing.assignments.manage') && $membership->hasPermission('billing.invoices.issue'),
+                'fee_policy' => $membership->hasPermission('billing.fees.manage'),
             ],
-            'recurring_plans' => BillingRecurringPlan::query()->when(! $membership->hasPermission('billing.assignments.manage') || ! $membership->hasPermission('billing.invoices.issue'), fn ($q) => $q->whereRaw('1 = 0'))->with(['student:id,student_number,legal_first_name,legal_last_name', 'feeStructure:id,name'])
+            'recurring_plans' => BillingRecurringPlan::query()->when(! $membership->hasPermission('billing.assignments.manage') || ! $membership->hasPermission('billing.invoices.issue'), fn ($q) => $q->whereRaw('1 = 0'))->with(['student:id,student_number,legal_first_name,legal_last_name', 'feeStructure:id,name', 'runs' => fn ($q) => $q->limit(1)])
                 ->where('institution_id', $membership->institution_id)->when($membership->campus_id !== null, fn ($q) => $q->where('campus_id', $membership->campus_id))
                 ->latest()->limit(100)->get()->map(static fn (BillingRecurringPlan $plan): array => [
                     'id' => (int) $plan->getKey(), 'student' => $plan->student->student_number.' · '.trim($plan->student->legal_first_name.' '.$plan->student->legal_last_name),
                     'structure' => $plan->feeStructure->name, 'frequency' => $plan->frequency, 'next_period_start' => $plan->period_start->toDateString(),
                     'next_period_end' => $plan->period_end->toDateString(), 'next_run_at' => $plan->next_run_at->toIso8601String(), 'status' => $plan->status,
+                    'latest_run' => $plan->runs->first() === null ? null : ['status' => $plan->runs->first()->status, 'attempts' => (int) $plan->runs->first()->attempts, 'failure_code' => $plan->runs->first()->failure_code],
                 ])->all(),
             'enrollment_assessment_structure_id' => ($configuredStructureId = data_get(TenantSetting::query()->where('key', 'billing.enrollment_fee_assessment')->first()?->value, 'fee_structure_id')) === null ? null : (int) $configuredStructureId,
+            'proration_policy' => TenantSetting::query()->where('key', 'billing.proration_policy')->first()?->value ?: ['enabled' => false, 'method' => 'calendar_days', 'effective_from' => '', 'effective_until' => null],
         ]);
+    }
+
+    /** @return array{id:int,invoice:string,currency:string,status:string,version:int,installments:list<array{sequence:int,due_on:string,amount:string,paid_amount:string,outstanding_amount:string,status:string}>,history:list<array{event_type:string,version:int,reason:string|null,occurred_at:string}>} */
+    private function installmentPlanData(BillingInstallmentPlan $plan): array
+    {
+        $history = [];
+        foreach ($plan->events()->latest('version')->limit(5)->get(['event_type', 'version', 'reason', 'occurred_at']) as $event) {
+            $history[] = ['event_type' => (string) $event->event_type, 'version' => (int) $event->version, 'reason' => $event->reason,
+                'occurred_at' => Carbon::parse($event->occurred_at)->toISOString()];
+        }
+
+        return [
+            'id' => (int) $plan->getKey(), 'invoice' => (string) $plan->invoice->invoice_number, 'currency' => (string) $plan->invoice->currency,
+            'status' => (string) $plan->status, 'version' => (int) $plan->version,
+            'installments' => app(BillingInstallmentSchedule::class)->lines($plan), 'history' => $history,
+        ];
     }
 
     public function configureEnrollmentAssessment(Tenant $tenant, Request $request, BillingLifecycleService $service): RedirectResponse
@@ -85,6 +126,58 @@ final class BillingLifecycleController extends Controller
         $service->configureEnrollmentFeeAssessment(isset($data['fee_structure_id']) ? (int) $data['fee_structure_id'] : null, $request->user());
 
         return back()->with('status', 'Enrollment assessment setting saved. A configured fee creates an assignment only; invoice issuance remains a separate finance action.');
+    }
+
+    public function storeFeeApplicability(Tenant $tenant, Request $request, BillingFeeApplicability $rules): RedirectResponse
+    {
+        $data = $request->validate([
+            'fee_structure_id' => ['required', 'integer', 'min:1'], 'campus_id' => ['nullable', 'integer', 'min:1'],
+            'academic_program_id' => ['nullable', 'integer', 'min:1'], 'academic_period_id' => ['nullable', 'integer', 'min:1'],
+            'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after_or_equal:effective_from'],
+        ]);
+        $rules->createDraft(['fee_structure_id' => (int) $data['fee_structure_id'], 'campus_id' => isset($data['campus_id']) ? (int) $data['campus_id'] : null,
+            'academic_program_id' => isset($data['academic_program_id']) ? (int) $data['academic_program_id'] : null,
+            'academic_period_id' => isset($data['academic_period_id']) ? (int) $data['academic_period_id'] : null,
+            'effective_from' => $data['effective_from'], 'effective_until' => $data['effective_until'] ?? null], $request->user());
+
+        return back()->with('status', 'Draft applicability rule created. Activate it after reviewing its academic scope and effective dates.');
+    }
+
+    public function transitionFeeApplicability(Tenant $tenant, int $ruleId, Request $request, BillingFeeApplicability $rules): RedirectResponse
+    {
+        $data = $request->validate(['status' => ['required', Rule::in(['active', 'inactive'])]]);
+        $rules->transition($ruleId, $data['status'], $request->user());
+
+        return back()->with('status', 'Fee applicability rule state updated.');
+    }
+
+    public function previewFeeApplicability(Tenant $tenant, Request $request, BillingFeeApplicability $rules): RedirectResponse
+    {
+        $data = $request->validate(['student_id' => ['required', 'integer', 'min:1'], 'academic_period_id' => ['required', 'integer', 'min:1'], 'on_date' => ['required', 'date']]);
+
+        return back()->with('billingApplicabilityPreview', $rules->previewStudent((int) $data['student_id'], (int) $data['academic_period_id'], $data['on_date']));
+    }
+
+    public function saveProrationPolicy(Tenant $tenant, Request $request, BillingLifecycleService $service): RedirectResponse
+    {
+        $data = $request->validate([
+            'enabled' => ['required', 'boolean'], 'method' => ['required', Rule::in(['calendar_days'])],
+            'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after_or_equal:effective_from'],
+        ]);
+        $service->saveProrationPolicy(['enabled' => (bool) $data['enabled'], 'method' => $data['method'], 'effective_from' => $data['effective_from'], 'effective_until' => $data['effective_until'] ?? null], $request->user());
+
+        return back()->with('status', 'Proration policy saved. Invoice amounts are unchanged; previews use this dated policy only.');
+    }
+
+    public function previewProration(Tenant $tenant, Request $request, BillingLifecycleService $service): RedirectResponse
+    {
+        $data = $request->validate([
+            'amount' => ['required', 'string', 'regex:/^(?:0|[1-9][0-9]{0,11})(?:\\.[0-9]{1,2})?$/'],
+            'period_start' => ['required', 'date'], 'period_end' => ['required', 'date', 'after_or_equal:period_start'],
+            'charge_start' => ['required', 'date'], 'charge_end' => ['required', 'date', 'after_or_equal:charge_start'],
+        ]);
+
+        return back()->with('billingProrationPreview', $service->previewProration($data, $request->user()));
     }
 
     public function storeRecurringPlan(Tenant $tenant, Request $request, BillingLifecycleService $service): RedirectResponse
@@ -106,6 +199,13 @@ final class BillingLifecycleController extends Controller
         $service->setRecurringPlanStatus($planId, $data['status'], $request->user());
 
         return back()->with('status', 'Recurring billing plan status updated.');
+    }
+
+    public function retryRecurringPlan(Tenant $tenant, int $planId, Request $request, BillingLifecycleService $service): RedirectResponse
+    {
+        $service->retryRecurringPlan($planId, $request->user());
+
+        return back()->with('status', 'A retry has been scheduled for the current failed billing period. Invoice idempotency prevents duplicate period charges.');
     }
 
     public function storeAssignment(Tenant $tenant, Request $request, BillingLifecycleService $service): RedirectResponse
@@ -192,6 +292,21 @@ final class BillingLifecycleController extends Controller
         $service->publishInstallments($planId, $request->user());
 
         return back()->with('status', 'Installment schedule published.');
+    }
+
+    public function amendInstallments(Tenant $tenant, int $planId, Request $request, BillingLifecycleService $service): RedirectResponse
+    {
+        $data = $request->validate([
+            'installments' => ['required', 'array', 'min:1', 'max:36'],
+            'installments.*.sequence' => ['nullable', 'integer', 'min:1', 'distinct'],
+            'installments.*.due_on' => ['required', 'date'],
+            'installments.*.amount' => ['required', 'string', 'regex:/^(?:0|[1-9][0-9]{0,11})(?:\\.[0-9]{1,2})?$/'],
+            'reason' => ['required', 'string', 'min:5', 'max:500'],
+            'request_key' => ['required', 'string', 'min:16', 'max:100'],
+        ]);
+        $service->amendInstallments($planId, $data['installments'], $data['reason'], $data['request_key'], $request->user());
+
+        return back()->with('status', 'Installment schedule amendment recorded with immutable version history. Invoice balances remain authoritative.');
     }
 
     public function storeAdjustment(Tenant $tenant, Request $request, BillingLifecycleService $service): RedirectResponse

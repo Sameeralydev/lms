@@ -16,7 +16,7 @@ Updated: 2026-11-18
 
 ## Focused test evidence
 
-`php tests/run.php --phase=18 --profile=sqlite --no-report` — 6 passed / 134 assertions. Covered foreign invoice allocation rejection with no partial mutation, submitter self-review denial, segregated refund actors, guardian grant/revocation, idempotent payment replay, and scoped report export.
+`php tests/run.php --phase=18 --profile=sqlite --no-report` â€” 6 passed / 134 assertions. Covered foreign invoice allocation rejection with no partial mutation, submitter self-review denial, segregated refund actors, guardian grant/revocation, idempotent payment replay, and scoped report export.
 
 ## Findings and limitations
 
@@ -26,6 +26,10 @@ Updated: 2026-11-18
 - Internal collection report does not authenticate bank statements or prove external settlement.
 - The audit identified no known critical issue in the focused tested workflows. This is not a formal certification or product-wide security sign-off.
 
-## Verification refresh — 2026-11-18
+## Verification refresh â€” 2026-11-18
 
 Latest focused security/workflow run: 6 passed / 140 assertions. It additionally verifies repeat refund execution does not add another reversal, the confirmation event retains its original allocation/unapplied receipt snapshot, and refund status notifications are emitted for request, approval, and execution. Focused PHPStan passed with no errors. MySQL concurrency and browser isolation remain unverified.
+
+## Applicability security addendum â€” 2026-11-18
+
+Fee applicability rules and preview routes require `billing.fees.manage`; service methods repeat the permission check, constrain records to current tenant and institution, enforce campus scope, and fail closed on overlapping equal-specificity rules. Activation requires an active fee structure compatible with the rule campus and date window. Enrollment assignment resolves the current active rule and preserves the referenced rule/academic period in the assignment snapshot. The focused rule test verifies successful activation, resolution, and rejection of an overlapping active rule (1 test / 15 assertions). This is focused SQLite evidence only. MySQL foreign-key behavior and concurrent rule activation remain unverified; no formal security certification is claimed.

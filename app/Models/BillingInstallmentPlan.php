@@ -24,4 +24,10 @@ class BillingInstallmentPlan extends AcademicRecord
     {
         return $this->hasMany(BillingInstallment::class, 'plan_id')->orderBy('sequence');
     }
+
+    /** @return HasMany<BillingInstallmentEvent, $this> */
+    public function events(): HasMany
+    {
+        return $this->hasMany(BillingInstallmentEvent::class, 'plan_id')->orderBy('version');
+    }
 }

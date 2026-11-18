@@ -2,6 +2,7 @@
 
 namespace App\Domain\Billing;
 
+use App\Models\BillingInstallmentPlan;
 use App\Models\BillingInvoice;
 use App\Models\TenantMembership;
 use Illuminate\Database\Eloquent\Builder;
@@ -132,6 +133,40 @@ final class BillingInvoiceReport
             'currency' => $currency, 'current' => BillingMoney::fromMinor($amounts['current']),
             'days_1_30' => BillingMoney::fromMinor($amounts['days_1_30']), 'days_31_60' => BillingMoney::fromMinor($amounts['days_31_60']),
             'days_61_90' => BillingMoney::fromMinor($amounts['days_61_90']), 'days_over_90' => BillingMoney::fromMinor($amounts['days_over_90']),
+        ])->values()->all();
+    }
+
+    /** @param array{from?:string|null,to?:string|null,status?:string|null,campus_id?:int|null,search?:string|null} $filters
+     * @return list<array{currency:string,installment_count:int,scheduled_total:string,paid_total:string,outstanding_total:string,overdue_total:string}>
+     */
+    public function installmentSummary(TenantMembership $membership, array $filters): array
+    {
+        $invoiceIds = $this->query($membership, [...$filters, 'status' => null])->select('billing_invoices.id');
+        $totals = [];
+        BillingInstallmentPlan::query()->with(['invoice', 'installments'])->where('status', 'published')->whereIn('invoice_id', $invoiceIds)
+            ->orderBy('id')->chunkById(200, function ($plans) use (&$totals): void {
+                $schedule = app(BillingInstallmentSchedule::class);
+                foreach ($plans as $plan) {
+                    $currency = (string) $plan->invoice->currency;
+                    $totals[$currency] ??= ['installment_count' => 0, 'scheduled' => 0, 'paid' => 0, 'outstanding' => 0, 'overdue' => 0];
+                    foreach ($schedule->lines($plan, $plan->invoice) as $line) {
+                        $totals[$currency]['installment_count']++;
+                        $totals[$currency]['scheduled'] += BillingMoney::toMinor($line['amount']);
+                        $totals[$currency]['paid'] += BillingMoney::toMinor($line['paid_amount']);
+                        $totals[$currency]['outstanding'] += BillingMoney::toMinor($line['outstanding_amount']);
+                        if ($line['status'] === 'overdue') {
+                            $totals[$currency]['overdue'] += BillingMoney::toMinor($line['outstanding_amount']);
+                        }
+                    }
+                }
+            });
+
+        ksort($totals);
+
+        return collect($totals)->map(static fn (array $row, string $currency): array => [
+            'currency' => $currency, 'installment_count' => $row['installment_count'],
+            'scheduled_total' => BillingMoney::fromMinor($row['scheduled']), 'paid_total' => BillingMoney::fromMinor($row['paid']),
+            'outstanding_total' => BillingMoney::fromMinor($row['outstanding']), 'overdue_total' => BillingMoney::fromMinor($row['overdue']),
         ])->values()->all();
     }
 

@@ -6,6 +6,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
@@ -71,5 +72,11 @@ class BillingInvoice extends AcademicRecord
     public function concession(): BelongsTo
     {
         return $this->belongsTo(BillingConcession::class);
+    }
+
+    /** @return HasOne<BillingInstallmentPlan, $this> */
+    public function installmentPlan(): HasOne
+    {
+        return $this->hasOne(BillingInstallmentPlan::class, 'invoice_id');
     }
 }

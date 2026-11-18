@@ -1,4 +1,4 @@
-# Phase 17 Fees & Billing â€” Development Traceability
+# Phase 17 Fees & Billing Ã¢â‚¬â€ Development Traceability
 
 Updated: 2026-11-18
 
@@ -6,41 +6,41 @@ Source: user-provided Phase 17 Fees & Billing development specification. No sepa
 
 | Specification area | Status | Implemented evidence | Remaining implementation |
 |---|---|---|---|
-| Â§4â€“5 Fee heads and fee structures | PARTIAL | Tenant/institution-scoped fee heads; draft structure creation and editing; activation; active structures and heads validated during invoice issuance; issued lines snapshot labels and amounts. `BillingController`, `BillingInvoiceIssuer`, billing migrations, billing UI. | Academic-session/program/course/batch applicability, fee groups, version/history UX, effective-dated replacement workflow, and richer applicability rules. |
-| Â§6 Student fee assignment | PARTIAL | Tenant/institution/campus-scoped manual assignments; active structure and student validation; optional enrollment reference; idempotency and duplicate period constraints; staff lifecycle form. `BillingLifecycleService`, `BillingLifecycleController`, `BillingFeeAssignment`, lifecycle migration and page. | Enrollment/admission lifecycle hooks, transfer/withdrawal proration, assignment history UI, bulk/recurring assignment generation, and MySQL verification. |
-| Â§7 Discounts, scholarships, concessions | PARTIAL | Pending concession requests, independent review, revocation for future invoices, fixed/percentage integer-minor-unit calculation and immutable invoice calculation snapshot/application; audit events and lifecycle UI. | Notification delivery, policy-specific eligibility/limits, additional approval matrix, MySQL and browser verification. |
-| Â§8 Invoice/voucher generation | PARTIAL | Single-student invoice issuance; integer minor-unit calculation; payload-bound idempotency; duplicate period prevention; unique invoice identifiers; immutable line and concession snapshots; unpaid cancellation; printable PDF; fee assignment linkage. | Bulk/recurring generation, invoice revision history, voucher workflows, and MySQL verification. |
-| Â§9 Installments | PARTIAL | Transactional draft schedules of 1â€“36 installments; positive amounts, ordered dates and exact invoice amount reconciliation; separate publication audit; lifecycle screen supports a two-part schedule. | Amendments/rescheduling history, payment/refund integration with per-installment balances, notifications, broader UI and MySQL verification. |
-| Â§10 Financial calculation | PARTIAL | `BillingMoney` parses two-decimal values into integer minor units; subtotal, discounts, invoice balances and approved adjustments are calculated without binary floating point; focused test covers discount snapshot and a posted credit. | Transfer/withdrawal proration policy, additional currency rules, MySQL monetary/concurrency verification. |
-| Â§11 Invoice lifecycle | PARTIAL | `issued` and `cancelled` states; unpaid cancellation preserves items; independently requested/reviewed/posted adjustments update `adjusted_total` and `outstanding_amount` without rewriting original total/payment history. | Adjustment reversal lifecycle, payment/installment reconciliation details, wider lifecycle reporting and MySQL verification. |
-| Â§12 Late fees | NOT IMPLEMENTED | No policy or rate was invented because no verified rules were available. | Implement only when the approved policy/rates and required workflow are confirmed. |
-| Â§13 Adjustments/reversals | PARTIAL | Credit/debit request, independent approval and third-person posting; append event history and audit; amount and overpayment guards. | Adjustment reversal/correction workflow and additional separation-of-duties policy; no destructive edit to issued documents. |
-| Â§14 Student/guardian portal | PARTIAL | Own learner invoices and active verified-guardian-authorized learner invoices; private invoice detail/PDF routes enforce identity, institution and campus scope. | Broader portal billing history, statements, payment status from Phase 18 and relevant notifications. |
-| Â§15â€“16 Bulk/automatic billing | MISSING | Manual single-invoice issue only. | Bulk, recurring and admission/enrollment-triggered billing with bounded jobs, retries and concurrency controls. |
-| Â§17 Student financial ledger | PARTIAL | Tenant/institution/campus-scoped statement composes invoices, confirmed allocations, executed refund reversals, posted adjustments and informational unapplied balances; student ledger page; signed running balances. This is a derived statement, not a separate immutable posting ledger. | Own learner/guardian statement route, pagination/export, reconciliation controls and MySQL verification. |
-| Â§18 Billing reports | PARTIAL | Existing invoice report remains tenant/campus scoped with date/status/campus/search filters, database-backed totals, pagination, audited formula-safe CSV. Lifecycle lists assignments, concessions, installment schedules and adjustments. | Dedicated aging, course/program, concession, installment, ledger and generation reports; PDF output and record-level drilldowns. |
-| Â§19 Notifications | MISSING | No new billing lifecycle notification event is emitted. Phase 18 payment notifications remain unchanged. | Internal notification/outbox integration for assignment, invoice, concession, installment and adjustment events; external delivery remains provider-dependent. |
-| Â§20 RBAC | PARTIAL | Billing permission catalog, finance-manager template, owner/admin grants, learner/guardian own-invoice permission, server-side route checks. | Accountant/cashier separation, concession/adjustment permissions connected to functional workflows, separation-of-duties approvals. |
-| Â§21 Frontend | PARTIAL | Billing dashboard, fee head/structure management, invoice issue/list/detail/cancel, learner/guardian invoice list/detail/print, report filters/export, and lifecycle/ledger pages with permission-aware assignment, concession, installment and adjustment actions. | Bulk/recurring workflows, richer reports, student/guardian ledger, comprehensive browser/accessibility coverage. |
-| Â§22â€“23 Backend/schema | PARTIAL | Existing foundation plus additive lifecycle tables for assignments, concessions/events/applications, installments, adjustments/events; invoice balance/snapshot fields and foreign keys; permission backfill. SQLite migration/test execution passes. | Guarded MySQL migration/postflight and MySQL constraint/index evidence remain pending; further policy-specific lifecycle/schema work remains. |
-| Â§24â€“25 Phase 18/cross-phase interfaces | PARTIAL | Invoice total/outstanding fields; current code does not fabricate payments. | Formal payment allocation events/contracts and balance recalculation when Phase 18 interfaces are available. |
+| Ã‚Â§4Ã¢â‚¬â€œ5 Fee heads and fee structures | PARTIAL | Tenant/institution-scoped fee heads; draft structure creation and editing; activation; active structures and heads validated during invoice issuance; issued lines snapshot labels and amounts. `BillingController`, `BillingInvoiceIssuer`, billing migrations, billing UI. | Academic-session/program/course/batch applicability, fee groups, version/history UX, effective-dated replacement workflow, and richer applicability rules. |
+| Ã‚Â§6 Student fee assignment | PARTIAL | Tenant/institution/campus-scoped manual assignments; active structure and student validation; optional enrollment reference; idempotency and duplicate period constraints; staff lifecycle form. `BillingLifecycleService`, `BillingLifecycleController`, `BillingFeeAssignment`, lifecycle migration and page. | Enrollment/admission lifecycle hooks, transfer/withdrawal proration, assignment history UI, bulk/recurring assignment generation, and MySQL verification. |
+| Ã‚Â§7 Discounts, scholarships, concessions | PARTIAL | Pending concession requests, independent review, revocation for future invoices, fixed/percentage integer-minor-unit calculation and immutable invoice calculation snapshot/application; audit events and lifecycle UI. | Notification delivery, policy-specific eligibility/limits, additional approval matrix, MySQL and browser verification. |
+| Ã‚Â§8 Invoice/voucher generation | PARTIAL | Single-student invoice issuance; integer minor-unit calculation; payload-bound idempotency; duplicate period prevention; unique invoice identifiers; immutable line and concession snapshots; unpaid cancellation; printable PDF; fee assignment linkage. | Bulk/recurring generation, invoice revision history, voucher workflows, and MySQL verification. |
+| Ã‚Â§9 Installments | PARTIAL | Transactional draft schedules of 1Ã¢â‚¬â€œ36 installments; positive amounts, ordered dates and exact invoice amount reconciliation; separate publication audit; lifecycle screen supports a two-part schedule. | Amendments/rescheduling history, payment/refund integration with per-installment balances, notifications, broader UI and MySQL verification. |
+| Ã‚Â§10 Financial calculation | PARTIAL | `BillingMoney` parses two-decimal values into integer minor units; subtotal, discounts, invoice balances and approved adjustments are calculated without binary floating point; focused test covers discount snapshot and a posted credit. | Transfer/withdrawal proration policy, additional currency rules, MySQL monetary/concurrency verification. |
+| Ã‚Â§11 Invoice lifecycle | PARTIAL | `issued` and `cancelled` states; unpaid cancellation preserves items; independently requested/reviewed/posted adjustments update `adjusted_total` and `outstanding_amount` without rewriting original total/payment history. | Adjustment reversal lifecycle, payment/installment reconciliation details, wider lifecycle reporting and MySQL verification. |
+| Ã‚Â§12 Late fees | NOT IMPLEMENTED | No policy or rate was invented because no verified rules were available. | Implement only when the approved policy/rates and required workflow are confirmed. |
+| Ã‚Â§13 Adjustments/reversals | PARTIAL | Credit/debit request, independent approval and third-person posting; append event history and audit; amount and overpayment guards. | Adjustment reversal/correction workflow and additional separation-of-duties policy; no destructive edit to issued documents. |
+| Ã‚Â§14 Student/guardian portal | PARTIAL | Own learner invoices and active verified-guardian-authorized learner invoices; private invoice detail/PDF routes enforce identity, institution and campus scope. | Broader portal billing history, statements, payment status from Phase 18 and relevant notifications. |
+| Ã‚Â§15Ã¢â‚¬â€œ16 Bulk/automatic billing | MISSING | Manual single-invoice issue only. | Bulk, recurring and admission/enrollment-triggered billing with bounded jobs, retries and concurrency controls. |
+| Ã‚Â§17 Student financial ledger | PARTIAL | Tenant/institution/campus-scoped statement composes invoices, confirmed allocations, executed refund reversals, posted adjustments and informational unapplied balances; student ledger page; signed running balances. This is a derived statement, not a separate immutable posting ledger. | Own learner/guardian statement route, pagination/export, reconciliation controls and MySQL verification. |
+| Ã‚Â§18 Billing reports | PARTIAL | Existing invoice report remains tenant/campus scoped with date/status/campus/search filters, database-backed totals, pagination, audited formula-safe CSV. Lifecycle lists assignments, concessions, installment schedules and adjustments. | Dedicated aging, course/program, concession, installment, ledger and generation reports; PDF output and record-level drilldowns. |
+| Ã‚Â§19 Notifications | MISSING | No new billing lifecycle notification event is emitted. Phase 18 payment notifications remain unchanged. | Internal notification/outbox integration for assignment, invoice, concession, installment and adjustment events; external delivery remains provider-dependent. |
+| Ã‚Â§20 RBAC | PARTIAL | Billing permission catalog, finance-manager template, owner/admin grants, learner/guardian own-invoice permission, server-side route checks. | Accountant/cashier separation, concession/adjustment permissions connected to functional workflows, separation-of-duties approvals. |
+| Ã‚Â§21 Frontend | PARTIAL | Billing dashboard, fee head/structure management, invoice issue/list/detail/cancel, learner/guardian invoice list/detail/print, report filters/export, and lifecycle/ledger pages with permission-aware assignment, concession, installment and adjustment actions. | Bulk/recurring workflows, richer reports, student/guardian ledger, comprehensive browser/accessibility coverage. |
+| Ã‚Â§22Ã¢â‚¬â€œ23 Backend/schema | PARTIAL | Existing foundation plus additive lifecycle tables for assignments, concessions/events/applications, installments, adjustments/events; invoice balance/snapshot fields and foreign keys; permission backfill. SQLite migration/test execution passes. | Guarded MySQL migration/postflight and MySQL constraint/index evidence remain pending; further policy-specific lifecycle/schema work remains. |
+| Ã‚Â§24Ã¢â‚¬â€œ25 Phase 18/cross-phase interfaces | PARTIAL | Invoice total/outstanding fields; current code does not fabricate payments. | Formal payment allocation events/contracts and balance recalculation when Phase 18 interfaces are available. |
 
 ## Earlier billing-foundation evidence (historical)
 
-- `php tests/run.php --phase=17 --profile=sqlite --no-report` â€” PASS, 5 tests / 144 assertions (2026-11-18).
-- Focused PHPStan over billing domain/controller/models â€” PASS after model/query annotations (2026-11-18).
-- `npm.cmd run typecheck` â€” PASS after UI prop corrections (2026-11-18).
-- Focused ESLint and Prettier checks â€” PASS (2026-11-18).
-- Production Vite build â€” PASS after initial UI integration; rerun after final changes is recorded in the development handoff.
-- PHP syntax checks and Pint â€” PASS for the listed billing PHP files (2026-11-18).
+- `php tests/run.php --phase=17 --profile=sqlite --no-report` Ã¢â‚¬â€ PASS, 5 tests / 144 assertions (2026-11-18).
+- Focused PHPStan over billing domain/controller/models Ã¢â‚¬â€ PASS after model/query annotations (2026-11-18).
+- `npm.cmd run typecheck` Ã¢â‚¬â€ PASS after UI prop corrections (2026-11-18).
+- Focused ESLint and Prettier checks Ã¢â‚¬â€ PASS (2026-11-18).
+- Production Vite build Ã¢â‚¬â€ PASS after initial UI integration; rerun after final changes is recorded in the development handoff.
+- PHP syntax checks and Pint Ã¢â‚¬â€ PASS for the listed billing PHP files (2026-11-18).
 - No MySQL connection, migration execution, broad browser matrix, concurrency campaign, or full product regression is claimed by this continuation.
 
-## Cumulative branch continuation â€” 2026-11-18
+## Cumulative branch continuation Ã¢â‚¬â€ 2026-11-18
 
 - Source-only recovery copy created outside the repository before staging: `C:\xampp\htdocs\lms-preservation-20261118-134049`.
 - Branch `developer-a/integrated` already existed and was checked out at `09f319c`, equal to `origin/developer-a/integrated`; no branch history was rewritten.
 - New lifecycle code adds the focused staff workflow described above. It does not complete bulk/recurring billing, automatic enrollment hooks, notification delivery, the full reporting catalog, or all student/guardian UX.
-- `php tests/run.php --phase=17 --profile=sqlite --no-report` â€” PASS, 6 tests / 188 assertions after this continuation. This isolated SQLite run also verified the new lifecycle migration and the assignment â†’ concession approval/application â†’ invoice â†’ installment publication â†’ independent adjustment approval/posting â†’ ledger flow.
+- `php tests/run.php --phase=17 --profile=sqlite --no-report` Ã¢â‚¬â€ PASS, 6 tests / 188 assertions after this continuation. This isolated SQLite run also verified the new lifecycle migration and the assignment Ã¢â€ â€™ concession approval/application Ã¢â€ â€™ invoice Ã¢â€ â€™ installment publication Ã¢â€ â€™ independent adjustment approval/posting Ã¢â€ â€™ ledger flow.
 - Focused PHPStan, Pint, PHP syntax, route registration, TypeScript, ESLint, Prettier, Vite production build, Composer validation/platform checks and `git diff --check` passed. No MySQL operation or migration against a persistent database was performed.
 - New work is preserved in the cumulative branch commit; see `docs/DEVELOPER_A_HANDOFF.md` for branch/commit and cross-phase status.
 
@@ -66,18 +66,22 @@ This continuation added functional billing paths while retaining the earlier rep
 
 Fresh focused evidence from this continuation:
 
-- `php tests/run.php --phase=17 --profile=sqlite --no-report` — PASS, 9 tests / 266 assertions.
-- `php artisan test --filter=CourseEnrollmentTest` — PASS, 9 tests / 190 assertions.
-- `php tests/run.php --phase=18 --profile=sqlite --no-report` — PASS, 6 tests / 140 assertions; Phase 18 sources were not changed.
-- Focused PHPStan — PASS, no errors; Pint — PASS; PHP syntax checks — PASS.
-- `npm.cmd run typecheck`, focused ESLint, focused Prettier, and `npm.cmd run build` — PASS (706 modules transformed).
-- `php artisan route:list --path=billing --except-vendor` — PASS, 48 billing routes registered. `git diff --check` — PASS.
+- `php tests/run.php --phase=17 --profile=sqlite --no-report` â€” PASS, 9 tests / 266 assertions.
+- `php artisan test --filter=CourseEnrollmentTest` â€” PASS, 9 tests / 190 assertions.
+- `php tests/run.php --phase=18 --profile=sqlite --no-report` â€” PASS, 6 tests / 140 assertions; Phase 18 sources were not changed.
+- Focused PHPStan â€” PASS, no errors; Pint â€” PASS; PHP syntax checks â€” PASS.
+- `npm.cmd run typecheck`, focused ESLint, focused Prettier, and `npm.cmd run build` â€” PASS (706 modules transformed).
+- `php artisan route:list --path=billing --except-vendor` â€” PASS, 48 billing routes registered. `git diff --check` â€” PASS.
 
-No MySQL preflight/migration or persistent database change, ClamAV/EICAR check, full browser suite, or broad product regression was run. Those items remain **QA PENDING — EXTERNAL ENVIRONMENT** where they require external infrastructure, and otherwise pending comprehensive QA. No claim of full Phase 17 completion is made.
+No MySQL preflight/migration or persistent database change, ClamAV/EICAR check, full browser suite, or broad product regression was run. Those items remain **QA PENDING â€” EXTERNAL ENVIRONMENT** where they require external infrastructure, and otherwise pending comprehensive QA. No claim of full Phase 17 completion is made.
 
 Remaining functional policy/product work includes transfer/withdrawal proration, academic/program applicability and installment amendments/reconciliation, wider billing report catalog and record drill-down/PDF, complete billing notification lifecycle/read history, staff recurring-plan recovery/ownership handoff, and product-approved late-fee/term-billing rules. The original approved Phase 17 source document is not present in the repository, so no requirement count is inferred beyond the user-provided specification and repository evidence.
 
-Current phase status: **PHASE 17 — DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS**.
+Current phase status: **PHASE 17 â€” DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS**.
+
+## Final implementation checkpoint (2026-11-18)
+
+The current status of all user-requested workstreams Aâ€“I is summarized in [PHASE_17_FINAL_IMPLEMENTATION.md](PHASE_17_FINAL_IMPLEMENTATION.md). New evidence since the historical rows above: `BillingFeeApplicability` adds draft/activation/deactivation, date/scope resolution, fail-closed ambiguity, eligibility preview and a confirmed-enrollment assignment integration; migration `2026_11_23_000000_create_billing_fee_applicability_rules.php` is applied only by isolated SQLite testing. The test `academic_fee_applicability_requires_explicit_rule_and_rejects_overlapping_active_scope` passed, 1 test / 15 assertions. Proration remains a preview; installments and recurring billing have lifecycle enhancements, but the credit subledger, statement import/reconciliation batches, reminders/inbox controls, full report catalog and live provider integration remain unimplemented. Phase 17 is still **DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS**.
 
 ## Focused integration continuation (2026-11-18)
 
@@ -91,13 +95,13 @@ The student statement now counts the current unapplied payment amount as a credi
 
 Fresh focused verification (2026-11-18):
 
-- `php tests/run.php --phase=17 --profile=sqlite --no-report` — PASS, 10 tests / 268 assertions.
-- `php tests/run.php --phase=18 --profile=sqlite --no-report` — PASS, 7 tests / 207 assertions.
-- `php artisan test --filter=CourseEnrollmentTest` — PASS, 9 tests / 190 assertions.
-- Focused PHPStan — PASS, no errors; Pint — PASS; changed PHP syntax — PASS.
-- `npm.cmd run typecheck`, focused ESLint, focused Prettier, and `npm.cmd run build` — PASS; Vite transformed 706 modules.
-- `composer validate --no-check-publish` and `composer check-platform-reqs` — PASS.
-- `php artisan route:list --path=billing --except-vendor` — PASS, 51 routes listed; `git diff --check` — PASS.
+- `php tests/run.php --phase=17 --profile=sqlite --no-report` â€” PASS, 10 tests / 268 assertions.
+- `php tests/run.php --phase=18 --profile=sqlite --no-report` â€” PASS, 7 tests / 207 assertions.
+- `php artisan test --filter=CourseEnrollmentTest` â€” PASS, 9 tests / 190 assertions.
+- Focused PHPStan â€” PASS, no errors; Pint â€” PASS; changed PHP syntax â€” PASS.
+- `npm.cmd run typecheck`, focused ESLint, focused Prettier, and `npm.cmd run build` â€” PASS; Vite transformed 706 modules.
+- `composer validate --no-check-publish` and `composer check-platform-reqs` â€” PASS.
+- `php artisan route:list --path=billing --except-vendor` â€” PASS, 51 routes listed; `git diff --check` â€” PASS.
 
 The Phase 17/18 SQLite runners exercise isolated test databases. No development or MySQL schema was contacted, and no persistent migration was executed. No full Chromium journey, six-theme accessibility matrix, MySQL concurrency/ownership validation, hosted CI, external bank statement import, payment gateway, or external payout was tested.
 
@@ -105,4 +109,4 @@ Still incomplete: academic/session/program fee applicability; configured prorati
 
 Phase 18 reversal capability is now implemented for full payment reversal through a compensating lifecycle; it is not a bank transfer reversal, refund payout, or partial correction. Tenant/campus scoped routes and three payment reversal permissions enforce request, independent review, and third-party execution.
 
-Current status remains **PHASE 17 — DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS** and **PHASE 18 — DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS**. MySQL and browser verification remain pending; missing functionality above is not classified as QA-only work.
+Current status remains **PHASE 17 â€” DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS** and **PHASE 18 â€” DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS**. MySQL and browser verification remain pending; missing functionality above is not classified as QA-only work.

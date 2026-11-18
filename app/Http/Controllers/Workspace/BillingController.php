@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Workspace;
 
 use App\Domain\Audit\AuditRecorder;
+use App\Domain\Billing\BillingInstallmentSchedule;
 use App\Domain\Billing\BillingInvoiceIssuer;
 use App\Domain\Billing\BillingInvoiceReport;
 use App\Domain\Grading\AcademicRecordPdf;
@@ -135,6 +136,7 @@ final class BillingController extends Controller
             'summary' => $reports->summary($membership, $filters),
             'collections' => $reports->confirmedCollections($membership, $filters),
             'aging' => $reports->agingSummary($membership, $filters),
+            'installment_summary' => $reports->installmentSummary($membership, $filters),
             'campuses' => Campus::query()->where('institution_id', $membership->institution_id)
                 ->when($membership->campus_id !== null, fn ($query) => $query->whereKey($membership->campus_id))
                 ->orderBy('name')->get(['id', 'name']),
@@ -183,6 +185,41 @@ final class BillingController extends Controller
             }, 'id');
             fclose($output);
         }, 'billing-invoices.csv', ['Content-Type' => 'text/csv; charset=UTF-8', 'Cache-Control' => 'private, no-store']);
+    }
+
+    public function printReports(Tenant $tenant, Request $request, TenantContext $context, BillingInvoiceReport $reports, AuditRecorder $audit, AcademicRecordPdf $pdf): HttpResponse
+    {
+        abort_unless($context->membership()->hasPermission('billing.reports.view'), 403);
+        $membership = $context->membership();
+        $filters = $this->reportFilters($request, $membership);
+        $query = $reports->query($membership, $filters)->latest('issued_at');
+        $summary = $reports->summary($membership, $filters);
+        $lines = [
+            strtoupper((string) $membership->institution()->value('display_name')), 'BILLING INVOICE REGISTER',
+            'Generated: '.now()->toDateTimeString(), 'Scope: institution '.$membership->institution_id.($filters['campus_id'] === null ? '' : ', campus '.$filters['campus_id']),
+            'Filters: from '.($filters['from'] ?? 'any').' to '.($filters['to'] ?? 'any').'; status '.($filters['status'] ?? 'all').'; search '.($filters['search'] ?? 'none'),
+            'Matching invoices: '.$summary['invoice_count'],
+        ];
+        foreach ($summary['currencies'] as $currency) {
+            $lines[] = sprintf('%s invoiced %s | collected %s | outstanding %s | overdue %s', $currency['currency'], $currency['invoiced_total'], $currency['collected_total'], $currency['outstanding_total'], $currency['overdue_total']);
+        }
+        $lines[] = 'Confirmed collections (net of executed refunds; pending and reversed payments excluded)';
+        foreach ($reports->confirmedCollections($membership, $filters) as $collection) {
+            $lines[] = sprintf('%s %s: count %d, net %s', $collection['currency'], $collection['method'], $collection['payment_count'], $collection['net_confirmed_amount']);
+        }
+        $lines[] = 'Outstanding balance aging';
+        foreach ($reports->agingSummary($membership, $filters) as $aging) {
+            $lines[] = sprintf('%s: current %s | 1-30 %s | 31-60 %s | 61-90 %s | over 90 %s', $aging['currency'], $aging['current'], $aging['days_1_30'], $aging['days_31_60'], $aging['days_61_90'], $aging['days_over_90']);
+        }
+        $lines[] = 'Invoice | Student | Issued | Due | Currency | Total | Outstanding | Status';
+        $query->limit(500)->get()->each(static function (BillingInvoice $invoice) use (&$lines): void {
+            $lines[] = implode(' | ', [$invoice->invoice_number, $invoice->student->student_number, $invoice->issued_at->toDateString(), $invoice->due_on->toDateString(), $invoice->currency, (string) $invoice->total, (string) $invoice->outstanding_amount, $invoice->status]);
+        });
+        $audit->record('billing.invoice_report.pdf_exported', $request->user(), (int) $membership->tenant_id, null, [
+            'row_limit' => min(500, (clone $query)->count()), 'from' => $filters['from'], 'to' => $filters['to'], 'status' => $filters['status'], 'campus_id' => $filters['campus_id'],
+        ]);
+
+        return response($pdf->render($lines), 200, ['Content-Type' => 'application/pdf', 'Content-Disposition' => 'attachment; filename="billing-invoice-register.pdf"', 'Cache-Control' => 'private, no-store']);
     }
 
     /** @return array{from:string|null,to:string|null,status:string|null,campus_id:int|null,search:string|null} */
@@ -369,7 +406,7 @@ final class BillingController extends Controller
     public function showInvoice(Tenant $tenant, int $invoiceId, TenantContext $context): Response
     {
         abort_unless($context->membership()->hasPermission('billing.invoices.view'), 403);
-        $invoice = BillingInvoice::query()->with(['items', 'student', 'feeStructure'])->findOrFail($invoiceId);
+        $invoice = BillingInvoice::query()->with(['items', 'student', 'feeStructure', 'installmentPlan.installments'])->findOrFail($invoiceId);
         $this->assertCampusScope($invoice->campus_id, $context);
 
         return Inertia::render('workspace/billing/invoice', [
@@ -384,7 +421,7 @@ final class BillingController extends Controller
     public function showMyInvoice(Tenant $tenant, int $invoiceId, Request $request, TenantContext $context): Response
     {
         abort_unless($context->membership()->hasPermission('billing.portal.view-own'), 403);
-        $invoice = BillingInvoice::query()->with(['items', 'student', 'feeStructure'])->findOrFail($invoiceId);
+        $invoice = BillingInvoice::query()->with(['items', 'student', 'feeStructure', 'installmentPlan.installments'])->findOrFail($invoiceId);
         $this->assertPortalInvoiceAccess($invoice, $request->user()->getKey(), $context);
 
         return Inertia::render('workspace/billing/invoice', [
@@ -477,6 +514,7 @@ final class BillingController extends Controller
             'subtotal' => (string) $invoice->subtotal, 'discount_total' => (string) $invoice->discount_total,
             'total' => (string) $invoice->total, 'paid_amount' => (string) $invoice->paid_amount,
             'outstanding_amount' => (string) $invoice->outstanding_amount, 'status' => $invoice->status,
+            'installments' => $invoice->installmentPlan === null ? [] : app(BillingInstallmentSchedule::class)->lines($invoice->installmentPlan, $invoice),
             'issued_at' => $invoice->issued_at->toIso8601String(), 'items' => $invoice->items->map(static fn ($item): array => [
                 'fee_head_code' => $item->fee_head_code, 'fee_head_name' => $item->fee_head_name,
                 'quantity' => (int) $item->quantity, 'unit_amount' => (string) $item->unit_amount, 'line_total' => (string) $item->line_total,

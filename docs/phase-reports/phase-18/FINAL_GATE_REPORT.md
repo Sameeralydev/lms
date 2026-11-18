@@ -4,7 +4,7 @@ Updated: 2026-11-18
 
 ## Result
 
-**PHASE 18 — DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS**
+**PHASE 18 â€” DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS**
 
 ## Evidence
 
@@ -29,7 +29,7 @@ Updated: 2026-11-18
 
 No Phase 19 work is started. No database reset, MySQL migration, credential access, staging, commit, or push occurred.
 
-## Fresh verification addendum — 2026-11-18
+## Fresh verification addendum â€” 2026-11-18
 
 The current focused result supersedes the earlier count above: Phase 18 SQLite `6 passed / 140 assertions` through `php tests/run.php --phase=18 --profile=sqlite --no-report`. Focused PHPStan passed with no errors; TypeScript, targeted ESLint/Prettier, Pint, Vite production build (704 modules), billing route inventory (29 routes), and `git diff --check` passed. Exact evidence is in `TEST_REPORT.md`.
 
@@ -40,3 +40,9 @@ The gate remains DEVELOPMENT IN PROGRESS because external provider approval, ext
 The latest focused SQLite Phase 18 suite passes 7 tests / 207 assertions and includes the new payment-reversal workflow. Focused PHPStan/Pint/PHP syntax, TypeScript/ESLint/Prettier, Vite build, routes, and diff checks passed. Phase 17's focused suite passes 10/268; enrollment regression passes 9/190. The latest tests do not include MySQL, browser/accessibility, external provider, bank statement, or full product QA.
 
 Remaining implementation is documented in `REQUIREMENT_TRACEABILITY.md`, including student-credit transfer lifecycle, installment settlement/amendments, external statement matching, optional gateway and cash-control policy. Phase 18 is not complete; no persistent migrations have been applied from this continuation.
+
+## Phase 17/18 implementation checkpoint â€” 2026-11-18
+
+The latest focused SQLite results supersede historical counts above: Phase 17 **16 passed / 395 assertions**; Phase 18 **7 passed / 275 assertions**. Current tests cover fee-applicability draft/activation/overlap rejection, proration preview, installment amendments, recurring operator recovery, cash/transfer allocation, refunds/reversals, guardian authority and internal reconciliation. Focused PHPStan, Pint, PHP syntax, TypeScript, ESLint, Prettier, Composer validation and production build passed. The billing route inventory is 59.
+
+**Gate remains PHASE 18 â€” DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS.** Bank-statement CSV batches/matching, standalone credit ledger, reminder/inbox management and broader report requirements remain unfinished. External provider integration requires owner/provider decisions. MySQL and authenticated browser verification were not performed. No MySQL or protected database was modified.

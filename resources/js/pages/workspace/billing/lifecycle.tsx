@@ -22,6 +22,17 @@ type Assignment = {
     source: string;
     status: string;
 };
+type FeeRule = {
+    id: number;
+    fee_structure: string;
+    currency: string;
+    campus_id: number | null;
+    academic_program_id: number | null;
+    academic_period_id: number | null;
+    effective_from: string;
+    effective_until: string | null;
+    status: string;
+};
 type Concession = {
     id: number;
     student: string;
@@ -35,8 +46,18 @@ type Concession = {
 type InstallmentPlan = {
     id: number;
     invoice: string;
+    currency: string;
     status: string;
-    installments: { sequence: number; due_on: string; amount: string }[];
+    version: number;
+    installments: {
+        sequence: number;
+        due_on: string;
+        amount: string;
+        paid_amount: string;
+        outstanding_amount: string;
+        status: string;
+    }[];
+    history: { event_type: string; version: number; reason: string | null; occurred_at: string | null }[];
 };
 type Adjustment = {
     id: number;
@@ -49,8 +70,188 @@ type Adjustment = {
     reviewed_by: number | null;
 };
 
+type InstallmentEdit = { sequence: number | undefined; due_on: string; amount: string };
+
 const field = 'border-border bg-canvas text-text-primary mt-1 w-full rounded-lg border p-2';
 const button = 'bg-brand rounded-lg px-4 py-2 font-semibold text-white disabled:opacity-50';
+
+function InstallmentPlanCard({ plan, base }: { plan: InstallmentPlan; base: string }) {
+    const form = useForm<{ installments: InstallmentEdit[]; reason: string; request_key: string }>({
+        installments: plan.installments.map(({ sequence, due_on, amount }) => ({ sequence, due_on, amount })),
+        reason: '',
+        request_key: crypto.randomUUID(),
+    });
+    const activeRows = form.data.installments;
+
+    return (
+        <li className="border-border border-t pt-3" key={plan.id}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <p className="text-text-primary font-medium">
+                        {plan.invoice} · {plan.status} · version {plan.version}
+                    </p>
+                    <ul className="text-text-secondary mt-2 space-y-1 text-sm">
+                        {plan.installments.map((row) => (
+                            <li key={row.sequence}>
+                                #{row.sequence} · due {row.due_on} · {plan.currency} {row.amount} · paid{' '}
+                                {plan.currency} {row.paid_amount} · remaining {plan.currency}{' '}
+                                {row.outstanding_amount} · {row.status.replace('_', ' ')}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+                {plan.status === 'draft' && (
+                    <button
+                        className="border-border rounded border px-3 py-1"
+                        onClick={() => router.post(`${base}/installment-plans/${plan.id}/publish`)}
+                    >
+                        Publish plan
+                    </button>
+                )}
+            </div>
+            {plan.status === 'published' && (
+                <details className="mt-3">
+                    <summary className="text-brand cursor-pointer text-sm font-medium">
+                        Amend unpaid installments
+                    </summary>
+                    <form
+                        className="mt-3 space-y-3"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            form.post(`${base}/installment-plans/${plan.id}/amend`, {
+                                onSuccess: () => form.setData('request_key', crypto.randomUUID()),
+                            });
+                        }}
+                    >
+                        {activeRows.map((row, index) => {
+                            const current = plan.installments.find((item) => item.sequence === row.sequence);
+                            const paid = current !== undefined && current.paid_amount !== '0.00';
+                            return (
+                                <div
+                                    key={row.sequence ?? `new-${index}`}
+                                    className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]"
+                                >
+                                    <label className="text-text-secondary text-sm">
+                                        Due date
+                                        <input
+                                            aria-label={`Installment ${row.sequence ?? 'new'} due date`}
+                                            className={field}
+                                            type="date"
+                                            required
+                                            disabled={paid}
+                                            value={row.due_on}
+                                            onChange={(event) =>
+                                                form.setData(
+                                                    'installments',
+                                                    activeRows.map((candidate, candidateIndex) =>
+                                                        candidateIndex === index
+                                                            ? {
+                                                                  ...candidate,
+                                                                  due_on: event.currentTarget.value,
+                                                              }
+                                                            : candidate,
+                                                    ),
+                                                )
+                                            }
+                                        />
+                                    </label>
+                                    <label className="text-text-secondary text-sm">
+                                        Amount
+                                        <input
+                                            aria-label={`Installment ${row.sequence ?? 'new'} amount`}
+                                            className={field}
+                                            required
+                                            inputMode="decimal"
+                                            disabled={paid}
+                                            value={row.amount}
+                                            onChange={(event) =>
+                                                form.setData(
+                                                    'installments',
+                                                    activeRows.map((candidate, candidateIndex) =>
+                                                        candidateIndex === index
+                                                            ? {
+                                                                  ...candidate,
+                                                                  amount: event.currentTarget.value,
+                                                              }
+                                                            : candidate,
+                                                    ),
+                                                )
+                                            }
+                                        />
+                                    </label>
+                                    {!paid && (
+                                        <button
+                                            type="button"
+                                            className="border-border self-end rounded border px-3 py-2"
+                                            onClick={() =>
+                                                form.setData(
+                                                    'installments',
+                                                    activeRows.filter(
+                                                        (_, candidateIndex) => candidateIndex !== index,
+                                                    ),
+                                                )
+                                            }
+                                        >
+                                            Remove
+                                        </button>
+                                    )}
+                                </div>
+                            );
+                        })}
+                        <button
+                            type="button"
+                            className="border-border rounded border px-3 py-2"
+                            disabled={activeRows.length >= 36}
+                            onClick={() =>
+                                form.setData('installments', [
+                                    ...activeRows,
+                                    { sequence: undefined, due_on: '', amount: '' },
+                                ])
+                            }
+                        >
+                            Add installment
+                        </button>
+                        <label className="text-text-secondary block text-sm">
+                            Amendment reason
+                            <textarea
+                                className={field}
+                                minLength={5}
+                                maxLength={500}
+                                required
+                                value={form.data.reason}
+                                onChange={(event) => form.setData('reason', event.currentTarget.value)}
+                            />
+                        </label>
+                        {Object.values(form.errors).length > 0 && (
+                            <p role="alert" className="text-sm text-red-700">
+                                {Object.values(form.errors).join(' ')}
+                            </p>
+                        )}
+                        <button className={button} disabled={form.processing}>
+                            Save amendment
+                        </button>
+                    </form>
+                </details>
+            )}
+            {plan.history.length > 0 && (
+                <details className="mt-3">
+                    <summary className="text-text-secondary cursor-pointer text-sm">Version history</summary>
+                    <ul className="text-text-secondary mt-2 space-y-1 text-xs">
+                        {plan.history.map((event, index) => (
+                            <li key={`${event.version}-${event.event_type}-${index}`}>
+                                Version {event.version}: {event.event_type}
+                                {event.reason ? ` — ${event.reason}` : ''}
+                                {event.occurred_at
+                                    ? ` · ${new Date(event.occurred_at).toLocaleString()}`
+                                    : ''}
+                            </li>
+                        ))}
+                    </ul>
+                </details>
+            )}
+        </li>
+    );
+}
 
 export default function BillingLifecycle({
     tenant,
@@ -59,11 +260,15 @@ export default function BillingLifecycle({
     structures,
     invoices,
     assignments,
+    fee_applicability_rules,
+    academic_programs,
+    academic_periods,
     concessions,
     installment_plans,
     adjustments,
     recurring_plans,
     enrollment_assessment_structure_id,
+    proration_policy,
     permissions,
 }: {
     tenant: { slug: string };
@@ -79,6 +284,9 @@ export default function BillingLifecycle({
     }[];
     invoices: Invoice[];
     assignments: Assignment[];
+    fee_applicability_rules: FeeRule[];
+    academic_programs: { id: number; title: string; code: string }[];
+    academic_periods: { id: number; name: string; code: string; starts_on: string; ends_on: string }[];
     concessions: Concession[];
     installment_plans: InstallmentPlan[];
     adjustments: Adjustment[];
@@ -91,8 +299,15 @@ export default function BillingLifecycle({
         next_period_end: string;
         next_run_at: string;
         status: string;
+        latest_run: { status: string; attempts: number; failure_code: string | null } | null;
     }[];
     enrollment_assessment_structure_id: number | null;
+    proration_policy: {
+        enabled: boolean;
+        method: string;
+        effective_from: string;
+        effective_until: string | null;
+    };
     permissions: {
         assign: boolean;
         concession_request: boolean;
@@ -104,10 +319,32 @@ export default function BillingLifecycle({
         ledger: boolean;
         issue: boolean;
         recurring: boolean;
+        fee_policy: boolean;
     };
 }) {
     const base = `/t/${tenant.slug}/billing`;
-    const flash = (usePage().props as { flash?: { billingBulkFailedIds?: number[] } }).flash;
+    const flash = (
+        usePage().props as {
+            flash?: {
+                billingBulkFailedIds?: number[];
+                billingProrationPreview?: {
+                    method: string;
+                    full_amount: string;
+                    eligible_days: number;
+                    period_days: number;
+                    prorated_amount: string;
+                    eligible_from: string;
+                    eligible_until: string;
+                };
+                billingApplicabilityPreview?: {
+                    eligible: boolean;
+                    reason: string;
+                    fee_structure_id: number | null;
+                    rule_id: number | null;
+                };
+            };
+        }
+    ).flash;
     const assignment = useForm({
         student_id: '',
         fee_structure_id: '',
@@ -116,6 +353,19 @@ export default function BillingLifecycle({
         effective_from: '',
         effective_until: '',
         idempotency_key: crypto.randomUUID(),
+    });
+    const feeRule = useForm({
+        fee_structure_id: '',
+        campus_id: '',
+        academic_program_id: '',
+        academic_period_id: '',
+        effective_from: '',
+        effective_until: '',
+    });
+    const feeRulePreview = useForm({
+        student_id: '',
+        academic_period_id: '',
+        on_date: new Date().toISOString().slice(0, 10),
     });
     const concession = useForm({
         student_id: '',
@@ -160,6 +410,19 @@ export default function BillingLifecycle({
     });
     const enrollmentAssessment = useForm({
         fee_structure_id: enrollment_assessment_structure_id?.toString() ?? '',
+    });
+    const prorationSetting = useForm({
+        enabled: proration_policy.enabled,
+        method: proration_policy.method,
+        effective_from: proration_policy.effective_from,
+        effective_until: proration_policy.effective_until ?? '',
+    });
+    const prorationPreview = useForm({
+        amount: '',
+        period_start: '',
+        period_end: '',
+        charge_start: '',
+        charge_end: '',
     });
 
     return (
@@ -292,6 +555,163 @@ export default function BillingLifecycle({
                     </form>
                 </section>
             )}
+            {permissions.fee_policy && (
+                <section className="bg-surface border-border mb-5 rounded-2xl border p-5">
+                    <h2 className="text-text-primary text-lg font-semibold">Proration policy and preview</h2>
+                    <p className="text-text-secondary mt-1 text-sm">
+                        Disabled by default. Calendar-day calculations are a preview only and never change
+                        issued invoices. Configure an institution-approved effective window before using
+                        previews.
+                    </p>
+                    <form
+                        className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            prorationSetting.put(`${base}/proration-policy`);
+                        }}
+                    >
+                        <label className="text-text-secondary flex items-center gap-2 text-sm">
+                            <input
+                                type="checkbox"
+                                checked={prorationSetting.data.enabled}
+                                onChange={(event) =>
+                                    prorationSetting.setData('enabled', event.currentTarget.checked)
+                                }
+                            />
+                            Enable configured preview policy
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Calculation method
+                            <select
+                                className={field}
+                                value={prorationSetting.data.method}
+                                onChange={(event) =>
+                                    prorationSetting.setData('method', event.currentTarget.value)
+                                }
+                            >
+                                <option value="calendar_days">Calendar days</option>
+                            </select>
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Effective from
+                            <input
+                                type="date"
+                                required
+                                className={field}
+                                value={prorationSetting.data.effective_from}
+                                onChange={(event) =>
+                                    prorationSetting.setData('effective_from', event.currentTarget.value)
+                                }
+                            />
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Effective until
+                            <input
+                                type="date"
+                                className={field}
+                                value={prorationSetting.data.effective_until}
+                                onChange={(event) =>
+                                    prorationSetting.setData('effective_until', event.currentTarget.value)
+                                }
+                            />
+                        </label>
+                        <button className={button} disabled={prorationSetting.processing}>
+                            Save policy
+                        </button>
+                    </form>
+                    <form
+                        className="border-border mt-5 grid gap-3 border-t pt-4 sm:grid-cols-2 lg:grid-cols-5"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            prorationPreview.post(`${base}/proration-preview`);
+                        }}
+                    >
+                        <label className="text-text-secondary text-sm">
+                            Full-period amount
+                            <input
+                                className={field}
+                                inputMode="decimal"
+                                required
+                                value={prorationPreview.data.amount}
+                                onChange={(event) =>
+                                    prorationPreview.setData('amount', event.currentTarget.value)
+                                }
+                            />
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Billing starts
+                            <input
+                                className={field}
+                                type="date"
+                                required
+                                value={prorationPreview.data.period_start}
+                                onChange={(event) =>
+                                    prorationPreview.setData('period_start', event.currentTarget.value)
+                                }
+                            />
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Billing ends
+                            <input
+                                className={field}
+                                type="date"
+                                required
+                                value={prorationPreview.data.period_end}
+                                onChange={(event) =>
+                                    prorationPreview.setData('period_end', event.currentTarget.value)
+                                }
+                            />
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Charge starts
+                            <input
+                                className={field}
+                                type="date"
+                                required
+                                value={prorationPreview.data.charge_start}
+                                onChange={(event) =>
+                                    prorationPreview.setData('charge_start', event.currentTarget.value)
+                                }
+                            />
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Charge ends
+                            <input
+                                className={field}
+                                type="date"
+                                required
+                                value={prorationPreview.data.charge_end}
+                                onChange={(event) =>
+                                    prorationPreview.setData('charge_end', event.currentTarget.value)
+                                }
+                            />
+                        </label>
+                        <button className={button} disabled={prorationPreview.processing}>
+                            Preview only
+                        </button>
+                    </form>
+                    {Object.values(prorationSetting.errors).length +
+                        Object.values(prorationPreview.errors).length >
+                        0 && (
+                        <p role="alert" className="mt-3 text-sm text-red-700">
+                            {Object.values(prorationSetting.errors)
+                                .concat(Object.values(prorationPreview.errors))
+                                .join(' ')}
+                        </p>
+                    )}
+                    {flash?.billingProrationPreview && (
+                        <p role="status" className="border-border mt-3 rounded-lg border p-3 text-sm">
+                            {flash.billingProrationPreview.method}:{' '}
+                            {flash.billingProrationPreview.prorated_amount} for{' '}
+                            {flash.billingProrationPreview.eligible_days} of{' '}
+                            {flash.billingProrationPreview.period_days} days (
+                            {flash.billingProrationPreview.eligible_from}–
+                            {flash.billingProrationPreview.eligible_until}); full-period amount{' '}
+                            {flash.billingProrationPreview.full_amount}.
+                        </p>
+                    )}
+                </section>
+            )}
             {permissions.recurring && (
                 <section className="bg-surface border-border mb-5 rounded-2xl border p-5">
                     <h2 className="text-text-primary text-lg font-semibold">Enrollment billing policy</h2>
@@ -329,7 +749,6 @@ export default function BillingLifecycle({
                             Save setting
                         </button>
                     </form>
-                    <h2 className="text-text-primary mt-6 text-lg font-semibold">Recurring billing plans</h2>
                     <h2 className="text-text-primary text-lg font-semibold">Recurring billing plans</h2>
                     <p className="text-text-secondary mt-1 text-sm">
                         Plans are explicit per learner and use the structure’s monthly or annual frequency.
@@ -442,6 +861,7 @@ export default function BillingLifecycle({
                                         'Frequency',
                                         'Next period',
                                         'Status',
+                                        'Latest run',
                                         'Action',
                                     ].map((heading) => (
                                         <th className="p-2" key={heading}>
@@ -460,6 +880,18 @@ export default function BillingLifecycle({
                                             {plan.next_period_start} – {plan.next_period_end}
                                         </td>
                                         <td>{plan.status}</td>
+                                        <td className="text-sm">
+                                            {plan.latest_run
+                                                ? `${plan.latest_run.status} · ${plan.latest_run.attempts} attempt(s)`
+                                                : 'Not run'}
+                                            {plan.latest_run?.status === 'failed' &&
+                                                plan.latest_run.failure_code && (
+                                                    <span className="text-text-muted block text-xs">
+                                                        Failure reference:{' '}
+                                                        {plan.latest_run.failure_code.slice(0, 12)}
+                                                    </span>
+                                                )}
+                                        </td>
                                         <td className="flex gap-2 py-2">
                                             {plan.status !== 'cancelled' && (
                                                 <button
@@ -479,6 +911,19 @@ export default function BillingLifecycle({
                                                     {plan.status === 'active' ? 'Pause' : 'Resume'}
                                                 </button>
                                             )}
+                                            {plan.status === 'active' &&
+                                                plan.latest_run?.status === 'failed' && (
+                                                    <button
+                                                        className="border-border rounded border px-2 py-1"
+                                                        onClick={() =>
+                                                            router.post(
+                                                                `${base}/recurring-plans/${plan.id}/retry`,
+                                                            )
+                                                        }
+                                                    >
+                                                        Retry period
+                                                    </button>
+                                                )}
                                             {plan.status !== 'cancelled' && (
                                                 <button
                                                     className="border-border rounded border px-2 py-1"
@@ -503,6 +948,221 @@ export default function BillingLifecycle({
                             </tbody>
                         </table>
                     </div>
+                </section>
+            )}
+            {permissions.fee_policy && (
+                <section className="bg-surface border-border mb-5 rounded-2xl border p-5">
+                    <h2 className="text-text-primary text-lg font-semibold">Academic fee applicability</h2>
+                    <p className="text-text-secondary mt-1 text-sm">
+                        Rules are created as drafts. Activate only after checking that the academic scope and
+                        date range are correct. Equally specific overlapping active rules are rejected.
+                    </p>
+                    <form
+                        className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            feeRule.post(`${base}/fee-applicability`);
+                        }}
+                    >
+                        <label className="text-text-secondary text-sm">
+                            Fee structure
+                            <select
+                                required
+                                className={field}
+                                value={feeRule.data.fee_structure_id}
+                                onChange={(e) => feeRule.setData('fee_structure_id', e.target.value)}
+                            >
+                                <option value="">Select</option>
+                                {structures.map((row) => (
+                                    <option key={row.id} value={row.id}>
+                                        {row.name} ({row.currency})
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Campus scope
+                            <select
+                                className={field}
+                                value={feeRule.data.campus_id}
+                                onChange={(e) => feeRule.setData('campus_id', e.target.value)}
+                            >
+                                <option value="">All authorized campuses</option>
+                                {campuses.map((row) => (
+                                    <option key={row.id} value={row.id}>
+                                        {row.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Program scope
+                            <select
+                                className={field}
+                                value={feeRule.data.academic_program_id}
+                                onChange={(e) => feeRule.setData('academic_program_id', e.target.value)}
+                            >
+                                <option value="">All programs</option>
+                                {academic_programs.map((row) => (
+                                    <option key={row.id} value={row.id}>
+                                        {row.title} ({row.code})
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Academic period
+                            <select
+                                className={field}
+                                value={feeRule.data.academic_period_id}
+                                onChange={(e) => feeRule.setData('academic_period_id', e.target.value)}
+                            >
+                                <option value="">Any period</option>
+                                {academic_periods.map((row) => (
+                                    <option key={row.id} value={row.id}>
+                                        {row.name} ({row.starts_on}–{row.ends_on})
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Effective from
+                            <input
+                                required
+                                type="date"
+                                className={field}
+                                value={feeRule.data.effective_from}
+                                onChange={(e) => feeRule.setData('effective_from', e.target.value)}
+                            />
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Effective until
+                            <input
+                                type="date"
+                                className={field}
+                                value={feeRule.data.effective_until}
+                                onChange={(e) => feeRule.setData('effective_until', e.target.value)}
+                            />
+                        </label>
+                        <button className={button} disabled={feeRule.processing}>
+                            Create draft rule
+                        </button>
+                    </form>
+                    {Object.values(feeRule.errors).length > 0 && (
+                        <p role="alert" className="mt-2 text-sm text-red-700">
+                            {Object.values(feeRule.errors).join(' ')}
+                        </p>
+                    )}
+                    <ul className="divide-border mt-5 divide-y">
+                        {fee_applicability_rules.map((rule) => (
+                            <li
+                                key={rule.id}
+                                className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm"
+                            >
+                                <span>
+                                    {rule.fee_structure} · {rule.currency} · program{' '}
+                                    {academic_programs.find((p) => p.id === rule.academic_program_id)?.code ??
+                                        'all'}{' '}
+                                    · period{' '}
+                                    {academic_periods.find((p) => p.id === rule.academic_period_id)?.name ??
+                                        'all'}{' '}
+                                    · {rule.effective_from} to {rule.effective_until ?? 'open'} ·{' '}
+                                    {rule.status}
+                                </span>
+                                {rule.status !== 'draft' && (
+                                    <button
+                                        type="button"
+                                        className="border-border rounded border px-3 py-1"
+                                        onClick={() =>
+                                            router.patch(`${base}/fee-applicability/${rule.id}/status`, {
+                                                status: rule.status === 'active' ? 'inactive' : 'active',
+                                            })
+                                        }
+                                    >
+                                        {rule.status === 'active' ? 'Deactivate' : 'Activate'}
+                                    </button>
+                                )}
+                                {rule.status === 'draft' && (
+                                    <button
+                                        type="button"
+                                        className="border-border rounded border px-3 py-1"
+                                        onClick={() =>
+                                            router.patch(`${base}/fee-applicability/${rule.id}/status`, {
+                                                status: 'active',
+                                            })
+                                        }
+                                    >
+                                        Activate
+                                    </button>
+                                )}
+                            </li>
+                        ))}
+                    </ul>
+                    <form
+                        className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            feeRulePreview.post(`${base}/fee-applicability/preview`);
+                        }}
+                    >
+                        <label className="text-text-secondary text-sm">
+                            Preview learner
+                            <select
+                                required
+                                className={field}
+                                value={feeRulePreview.data.student_id}
+                                onChange={(e) => feeRulePreview.setData('student_id', e.target.value)}
+                            >
+                                <option value="">Select</option>
+                                {students.map((s) => (
+                                    <option key={s.id} value={s.id}>
+                                        {s.student_number}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Period
+                            <select
+                                required
+                                className={field}
+                                value={feeRulePreview.data.academic_period_id}
+                                onChange={(e) => feeRulePreview.setData('academic_period_id', e.target.value)}
+                            >
+                                <option value="">Select</option>
+                                {academic_periods.map((p) => (
+                                    <option key={p.id} value={p.id}>
+                                        {p.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            On date
+                            <input
+                                required
+                                type="date"
+                                className={field}
+                                value={feeRulePreview.data.on_date}
+                                onChange={(e) => feeRulePreview.setData('on_date', e.target.value)}
+                            />
+                        </label>
+                        <button className={button} disabled={feeRulePreview.processing}>
+                            Preview eligibility
+                        </button>
+                    </form>
+                    {Object.values(feeRulePreview.errors).length > 0 && (
+                        <p role="alert" className="mt-2 text-sm text-red-700">
+                            {Object.values(feeRulePreview.errors).join(' ')}
+                        </p>
+                    )}
+                    {flash?.billingApplicabilityPreview && (
+                        <p role="status" className="mt-3 text-sm">
+                            {flash.billingApplicabilityPreview.eligible
+                                ? `Eligible under rule ${flash.billingApplicabilityPreview.rule_id}; fee structure ${flash.billingApplicabilityPreview.fee_structure_id}.`
+                                : `No automatic assignment: ${flash.billingApplicabilityPreview.reason}.`}
+                        </p>
+                    )}
                 </section>
             )}
             <div className="grid gap-5 xl:grid-cols-2">
@@ -858,7 +1518,7 @@ export default function BillingLifecycle({
                         {installment.data.installments.map((row, index) => (
                             <div className="contents" key={index}>
                                 <label className="text-text-secondary text-sm">
-                                    {index === 0 ? 'First' : 'Second'} due date
+                                    Installment {index + 1} due date
                                     <input
                                         className={field}
                                         type="date"
@@ -877,7 +1537,7 @@ export default function BillingLifecycle({
                                     />
                                 </label>
                                 <label className="text-text-secondary text-sm">
-                                    {index === 0 ? 'First' : 'Second'} amount
+                                    Installment {index + 1} amount
                                     <input
                                         className={field}
                                         required
@@ -895,37 +1555,47 @@ export default function BillingLifecycle({
                                         }
                                     />
                                 </label>
+                                <button
+                                    type="button"
+                                    className="border-border rounded border px-3 py-2 sm:col-span-2 lg:col-span-1"
+                                    disabled={installment.data.installments.length <= 1}
+                                    onClick={() =>
+                                        installment.setData(
+                                            'installments',
+                                            installment.data.installments.filter(
+                                                (_, itemIndex) => itemIndex !== index,
+                                            ),
+                                        )
+                                    }
+                                >
+                                    Remove installment {index + 1}
+                                </button>
                             </div>
                         ))}
-                        <button className={button} disabled={installment.processing}>
-                            Save two-part draft
+                        <button
+                            type="button"
+                            className="border-border rounded border px-3 py-2"
+                            disabled={installment.data.installments.length >= 36}
+                            onClick={() =>
+                                installment.setData('installments', [
+                                    ...installment.data.installments,
+                                    { due_on: '', amount: '' },
+                                ])
+                            }
+                        >
+                            Add installment
+                        </button>
+                        <button
+                            className={button}
+                            disabled={installment.processing || installment.data.installments.length < 1}
+                        >
+                            Save schedule draft
                         </button>
                     </form>
                     {installment_plans.length > 0 && (
                         <ul className="mt-4 space-y-2">
                             {installment_plans.map((plan) => (
-                                <li
-                                    className="border-border flex flex-wrap items-center justify-between gap-3 border-t pt-3"
-                                    key={plan.id}
-                                >
-                                    <span>
-                                        {plan.invoice}:{' '}
-                                        {plan.installments
-                                            .map((row) => `${row.due_on} (${row.amount})`)
-                                            .join(' · ')}{' '}
-                                        — {plan.status}
-                                    </span>
-                                    {plan.status === 'draft' && (
-                                        <button
-                                            className="border-border rounded border px-3 py-1"
-                                            onClick={() =>
-                                                router.post(`${base}/installment-plans/${plan.id}/publish`)
-                                            }
-                                        >
-                                            Publish plan
-                                        </button>
-                                    )}
-                                </li>
+                                <InstallmentPlanCard key={plan.id} plan={plan} base={base} />
                             ))}
                         </ul>
                     )}

@@ -19,6 +19,14 @@ type Invoice = {
     paid_amount: string;
     outstanding_amount: string;
     status: string;
+    installments: {
+        sequence: number;
+        due_on: string;
+        amount: string;
+        paid_amount: string;
+        outstanding_amount: string;
+        status: string;
+    }[];
     issued_at: string;
     items: {
         fee_head_code: string;
@@ -120,6 +128,50 @@ export default function BillingInvoicePage({
                         </tfoot>
                     </table>
                 </div>
+                {invoice.installments.length > 0 && (
+                    <section
+                        className="border-border mt-6 border-t pt-5"
+                        aria-labelledby="installments-heading"
+                    >
+                        <h2 id="installments-heading" className="text-text-primary font-semibold">
+                            Installment schedule
+                        </h2>
+                        <div className="mt-3 overflow-x-auto">
+                            <table className="w-full min-w-[600px] text-left text-sm">
+                                <thead className="text-text-muted border-border border-b">
+                                    <tr>
+                                        <th className="p-3">#</th>
+                                        <th className="p-3">Due date</th>
+                                        <th className="p-3">Amount</th>
+                                        <th className="p-3">Paid</th>
+                                        <th className="p-3">Outstanding</th>
+                                        <th className="p-3">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-border divide-y">
+                                    {invoice.installments.map((item) => (
+                                        <tr key={item.sequence}>
+                                            <td className="p-3">{item.sequence}</td>
+                                            <td className="p-3">{item.due_on}</td>
+                                            <td className="p-3">
+                                                {invoice.currency} {item.amount}
+                                            </td>
+                                            <td className="p-3">
+                                                {invoice.currency} {item.paid_amount}
+                                            </td>
+                                            <td className="p-3">
+                                                {invoice.currency} {item.outstanding_amount}
+                                            </td>
+                                            <td className="p-3 capitalize">
+                                                {item.status.replace('_', ' ')}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                )}
                 <div className="mt-5 flex flex-wrap gap-3">
                     <a
                         className="bg-brand rounded-lg px-4 py-2 font-semibold text-white"

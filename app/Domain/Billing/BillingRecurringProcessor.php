@@ -33,6 +33,15 @@ final class BillingRecurringProcessor
             } catch (\Throwable $exception) {
                 // Log only the stable exception class and plan ID; never log request/configuration payloads.
                 logger()->warning('Recurring billing plan attempt failed.', ['plan_id' => (int) $id, 'exception_class' => $exception::class]);
+                $plan = DB::table('billing_recurring_plans')->where('id', $id)->first(['tenant_id', 'period_start', 'period_end']);
+                if ($plan !== null) {
+                    $run = DB::table('billing_recurring_runs')->where('plan_id', $id)->where('period_start', $plan->period_start)->where('period_end', $plan->period_end)->first(['attempts', 'created_at']);
+                    DB::table('billing_recurring_runs')->updateOrInsert(
+                        ['tenant_id' => $plan->tenant_id, 'plan_id' => $id, 'period_start' => $plan->period_start, 'period_end' => $plan->period_end],
+                        ['status' => 'failed', 'failure_code' => substr(hash('sha256', $exception::class), 0, 64), 'last_attempt_at' => now(),
+                            'updated_at' => now(), 'created_at' => $run->created_at ?? now(), 'attempts' => (int) ($run->attempts ?? 0) + 1],
+                    );
+                }
                 $failed++;
             } finally {
                 $this->context->clear();
@@ -49,13 +58,25 @@ final class BillingRecurringProcessor
             return true;
         }
         $tenant = Tenant::query()->findOrFail((int) $planData->tenant_id);
-        $membership = TenantMembership::query()->withoutGlobalScope('tenant')->where('tenant_id', $tenant->getKey())
+        // created_by is immutable provenance, not a permanent execution dependency. Resolve
+        // a currently authorized operator each time so staff turnover cannot strand a plan.
+        $memberships = TenantMembership::query()->withoutGlobalScope('tenant')->where('tenant_id', $tenant->getKey())
             ->where('institution_id', $planData->institution_id)
             ->where(fn ($query) => $query->whereNull('campus_id')->orWhere('campus_id', $planData->campus_id))
-            ->where('user_id', $planData->created_by)->where('status', 'active')->firstOrFail();
-        $this->context->set($tenant, $membership);
-        abort_unless($membership->hasPermission('billing.invoices.issue'), 403);
-        $actor = User::query()->findOrFail((int) $planData->created_by);
+            ->where('status', 'active')->orderByRaw('CASE WHEN user_id = ? THEN 0 ELSE 1 END', [(int) $planData->created_by])->get();
+        $membership = null;
+        foreach ($memberships as $candidate) {
+            $this->context->set($tenant, $candidate);
+            if ($candidate->hasPermission('billing.invoices.issue')) {
+                $membership = $candidate;
+                break;
+            }
+        }
+        if ($membership === null) {
+            $this->context->clear();
+            throw new \RuntimeException('No active institution billing operator is authorized to issue recurring invoices.');
+        }
+        $actor = User::query()->findOrFail((int) $membership->user_id);
 
         return DB::transaction(function () use ($id, $actor): bool {
             $plan = BillingRecurringPlan::query()->lockForUpdate()->findOrFail($id);

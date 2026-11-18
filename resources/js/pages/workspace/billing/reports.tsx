@@ -23,6 +23,7 @@ export default function BillingReports({
     summary,
     collections,
     aging,
+    installment_summary,
     campuses,
     invoices,
     export_url,
@@ -55,6 +56,14 @@ export default function BillingReports({
         days_61_90: string;
         days_over_90: string;
     }[];
+    installment_summary: {
+        currency: string;
+        installment_count: number;
+        scheduled_total: string;
+        paid_total: string;
+        outstanding_total: string;
+        overdue_total: string;
+    }[];
     campuses: { id: number; name: string }[];
     invoices: { data: InvoiceRow[]; links: PageLink[] };
     export_url: string;
@@ -75,9 +84,20 @@ export default function BillingReports({
                 title="Billing reports"
                 description="Review issued invoices and outstanding balances for the institution or your authorized campus scope."
                 actions={
-                    <a href={export_url} className="bg-brand rounded-lg px-4 py-2 font-semibold text-white">
-                        Export CSV
-                    </a>
+                    <div className="flex flex-wrap gap-2">
+                        <a
+                            href={export_url}
+                            className="bg-brand rounded-lg px-4 py-2 font-semibold text-white"
+                        >
+                            Export CSV
+                        </a>
+                        <a
+                            href={export_url.replace('.csv', '.pdf')}
+                            className="border-border rounded-lg border px-4 py-2 font-semibold"
+                        >
+                            Download PDF
+                        </a>
+                    </div>
                 }
             />
             <form
@@ -200,6 +220,49 @@ export default function BillingReports({
                     />,
                 ])}
             </div>
+            <section className="bg-surface border-border mt-5 overflow-x-auto rounded-2xl border p-4">
+                <h2 className="text-text-primary font-semibold">Published installment settlement</h2>
+                <p className="text-text-secondary mt-1 text-sm">
+                    Paid amounts are allocated in schedule order from authoritative invoice settlement;
+                    canceled rows are excluded.
+                </p>
+                {installment_summary.length === 0 ? (
+                    <p className="text-text-secondary mt-3 text-sm">
+                        No published installment schedules match these filters.
+                    </p>
+                ) : (
+                    <table className="mt-3 w-full min-w-[700px] text-left text-sm">
+                        <thead>
+                            <tr>
+                                {[
+                                    'Currency',
+                                    'Installments',
+                                    'Scheduled',
+                                    'Settled',
+                                    'Outstanding',
+                                    'Overdue',
+                                ].map((heading) => (
+                                    <th className="p-2" key={heading}>
+                                        {heading}
+                                    </th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {installment_summary.map((row) => (
+                                <tr className="border-border border-t" key={row.currency}>
+                                    <td className="p-2">{row.currency}</td>
+                                    <td className="p-2">{row.installment_count}</td>
+                                    <td className="p-2">{row.scheduled_total}</td>
+                                    <td className="p-2">{row.paid_total}</td>
+                                    <td className="p-2">{row.outstanding_total}</td>
+                                    <td className="p-2">{row.overdue_total}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
+            </section>
             <section className="bg-surface border-border mt-5 overflow-x-auto rounded-2xl border p-4">
                 <h2 className="text-text-primary font-semibold">Outstanding balance aging</h2>
                 <p className="text-text-secondary mt-1 text-sm">
