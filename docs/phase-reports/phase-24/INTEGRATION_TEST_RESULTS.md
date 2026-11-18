@@ -6,7 +6,7 @@ Date: 2026-11-19. Commands below were run in `C:\xampp\htdocs\lms-phase24` using
 
 | Check | Command | Result |
 |---|---|---|
-| Full SQLite regression | `tests/run.php --phase=all --profile=sqlite --no-report` | 415 passed, 10 skipped, 9,180 assertions; exit 0 |
+| Full SQLite regression | `tests/run.php --phase=all --profile=sqlite --no-report` | 415 passed, 10 skipped, 9,180 assertions |
 | Academic analytics feature tests | `php artisan test --compact tests/Feature/Phase15AcademicAnalyticsTest.php` | 15 passed, 649 assertions |
 | Billing foundation feature tests | `php artisan test --compact tests/Feature/Phase17BillingFoundationTest.php` | 17 passed, 419 assertions |
 | Vitest | `npm run test:unit` | 24 passed |
