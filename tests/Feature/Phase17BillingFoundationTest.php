@@ -111,10 +111,11 @@ final class Phase17BillingFoundationTest extends TestCase
         foreach (['-0.01', '1.001', '1e2', '01.00', 'NaN'] as $invalid) {
             try {
                 BillingMoney::toMinor($invalid);
-                self::fail("Invalid money value {$invalid} was accepted.");
             } catch (\InvalidArgumentException) {
-                self::assertTrue(true);
+                continue;
             }
+
+            self::fail("Invalid money value {$invalid} was accepted.");
         }
     }
 
