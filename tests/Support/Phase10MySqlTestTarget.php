@@ -8,7 +8,7 @@ final readonly class Phase10MySqlTestTarget
 
     public const ACCOUNT = 'techmentors_phase10_test';
 
-    public const CONFIGURATION = '.env.phase10.testing';
+    public const CONFIGURATION = '.env.testing';
 
     public const MANIFEST = '.phase10-test-db-ownership.json';
 

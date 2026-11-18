@@ -1,6 +1,6 @@
 <?php
 
-use Dotenv\Dotenv;
+use Tests\Support\CentralTestingEnvironment;
 use Tests\Support\Phase04MySqlTestDataPolicy;
 use Tests\Support\Phase04MySqlTestPreflight;
 use Tests\Support\Phase04MySqlTestRunLock;
@@ -261,40 +261,24 @@ if ($usePhase04Mysql || $usePhase04V2Mysql || $usePhase05Mysql || $usePhase06Mys
         exit(2);
     }
 
-    $configurationFilename = $isPhase07Target
-        ? Phase07MySqlTestTarget::CONFIGURATION
-        : ($isPhase06Target
-        ? Phase06MySqlTestTarget::CONFIGURATION
-        : ($isPhase05Target ? '.env.phase05.testing' : ($isV2Target ? '.env.phase04.v2.testing' : '.env.phase04.testing')));
-    $configurationPath = dirname(__DIR__).DIRECTORY_SEPARATOR.$configurationFilename;
-    if (! is_file($configurationPath) || is_link($configurationPath) || ! isEnvironmentFileIgnored($configurationFilename)) {
-        fwrite(STDERR, 'Guarded MySQL tests require a regular, Git-ignored '.$configurationFilename." file.\n");
-        exit(2);
-    }
-
     try {
-        $mysqlEnvironment = Dotenv::parse((string) file_get_contents($configurationPath));
-    } catch (Throwable) {
-        fwrite(STDERR, "The guarded MySQL test configuration could not be parsed.\n");
+        $phaseProfile = $isPhase07Target ? '07' : ($isPhase06Target ? '06' : ($isPhase05Target ? '05' : ($isV2Target ? '04V2' : '04')));
+        $requireDisposable = $isPhase06Target || $isPhase07Target;
+        $mysqlEnvironment = CentralTestingEnvironment::mysqlPhase(
+            dirname(__DIR__),
+            $phaseProfile,
+            $target->database,
+            $target->account,
+            null,
+            requireDisposable: $requireDisposable,
+        );
+    } catch (RuntimeException $exception) {
+        fwrite(STDERR, $exception->getMessage()." No database was contacted.\n");
         exit(2);
     }
-
+    $mysqlEnvironment['TESTING_PROFILE'] = 'mysql';
+    $mysqlEnvironment['TESTING_PHASE'] = $phaseProfile;
     $environment = array_replace($environment, $mysqlEnvironment);
-    $environment['APP_ENV'] = 'testing';
-    $environment['APP_DEBUG'] = 'false';
-
-    if (trim($environment['DB_PASSWORD'] ?? '') === '') {
-        fwrite(STDERR, "The dedicated MySQL test account password is missing from the ignored configuration.\n");
-        exit(2);
-    }
-    if (($usePhase06Mysql || $upgradePhase06Mysql || $reconcilePhase06) && ($environment['PHASE06_TEST_SCHEMA_DISPOSABLE'] ?? '') !== 'true') {
-        fwrite(STDERR, "The Phase 06 target must be explicitly marked disposable in its ignored private configuration.\n");
-        exit(2);
-    }
-    if (($usePhase07Mysql || $resumePhase07Mysql || $upgradePhase07Mysql) && ($environment['PHASE07_TEST_SCHEMA_DISPOSABLE'] ?? '') !== 'true') {
-        fwrite(STDERR, "The Phase 07 target must be explicitly marked disposable in its ignored private configuration.\n");
-        exit(2);
-    }
 }
 
 try {

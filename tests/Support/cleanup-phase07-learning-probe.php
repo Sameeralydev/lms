@@ -2,12 +2,19 @@
 
 require dirname(__DIR__, 2).'/vendor/autoload.php';
 
-use Dotenv\Dotenv;
+use Tests\Support\CentralTestingEnvironment;
 use Tests\Support\Phase07MySqlGrantPolicy;
 use Tests\Support\Phase07MySqlTestTarget;
 
 $base = dirname(__DIR__, 2);
-$configuration = Dotenv::createMutable($base, '.env.phase07.testing')->safeLoad();
+$configuration = CentralTestingEnvironment::mysqlPhase(
+    $base,
+    '07',
+    Phase07MySqlTestTarget::DATABASE,
+    Phase07MySqlTestTarget::ACCOUNT,
+    Phase07MySqlTestTarget::AUTHORIZATION,
+    requireDisposable: true,
+);
 $slug = $argv[1] ?? '';
 if (! preg_match('/^phase07-learning-[a-f0-9-]{36}$/', $slug)) {
     fwrite(STDERR, "Refused cleanup: provide the exact generated Phase 07 learning probe tenant slug.\n");

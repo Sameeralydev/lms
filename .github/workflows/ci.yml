@@ -1,4 +1,4 @@
-name: TechMentors Phase 03 quality gate
+name: TechMentors centralized testing quality gate
 
 on:
   push:
@@ -10,21 +10,6 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    services:
-      mysql:
-        image: mysql:8.4
-        env:
-          MYSQL_ROOT_PASSWORD: phase01_ci_root_only
-          MYSQL_DATABASE: techmentors_lms_test
-          MYSQL_USER: phase01_ci_user
-          MYSQL_PASSWORD: phase01_ci_user_only
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -pphase01_ci_root_only"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=10
     steps:
       - name: Check out source
         uses: actions/checkout@v5
@@ -49,6 +34,10 @@ jobs:
           composer check-platform-reqs
           cp .env.example .env
           php artisan key:generate
+          cp .env.testing.example .env.testing
+          APP_KEY="$(php artisan key:generate --show)"
+          sed -i "s|^APP_KEY=.*|APP_KEY=${APP_KEY}|" .env.testing
+          git check-ignore --quiet .env.testing
 
       - name: Install JavaScript dependencies
         run: npm ci
@@ -68,50 +57,14 @@ jobs:
           npm run lint
 
       - name: Unit and feature tests
-        env:
-          APP_ENV: testing
-          APP_DEBUG: 'false'
-          DB_CONNECTION: sqlite
-          DB_DATABASE: ':memory:'
-          DB_URL: ''
         run: |
+          export TESTING_PROFILE=sqlite
           npm run test:unit
-          composer test
-
-      - name: MySQL 8.4 integration tests on disposable database
-        env:
-          APP_ENV: testing
-          APP_DEBUG: 'false'
-          DB_CONNECTION: mysql
-          DB_HOST: 127.0.0.1
-          DB_PORT: 3306
-          DB_DATABASE: techmentors_lms_test
-          DB_USERNAME: phase01_ci_user
-          DB_PASSWORD: phase01_ci_user_only
-          CACHE_STORE: array
-          QUEUE_CONNECTION: sync
-          SESSION_DRIVER: array
-          SESSION_ENCRYPT: 'true'
-        run: |
-          composer test
-          php artisan migrate:status
+          php tests/run-tests.php --sqlite
 
       - name: Build and browser checks
         env:
-          APP_ENV: testing
-          APP_DEBUG: 'false'
           APP_URL: http://127.0.0.1:8017
-          DB_CONNECTION: mysql
-          DB_HOST: 127.0.0.1
-          DB_PORT: 3306
-          DB_DATABASE: techmentors_lms_test
-          DB_USERNAME: phase01_ci_user
-          DB_PASSWORD: phase01_ci_user_only
-          DB_URL: ''
-          CACHE_STORE: file
-          QUEUE_CONNECTION: sync
-          SESSION_DRIVER: file
-          SESSION_ENCRYPT: 'true'
           MAIL_MAILER: array
         run: |
           npm run build

@@ -147,7 +147,7 @@ final class ExaminationCandidateGovernanceTest extends TestCase
         $this->deliverExaminationOutbox($f['tenant']);
         $this->assertDatabaseHas('quiz_notifications', ['tenant_id' => $f['tenant']->id, 'user_id' => $f['owner']->id, 'event_type' => 'exam.incident.reported']);
         $this->assertDatabaseMissing('quiz_notifications', ['tenant_id' => $f['tenant']->id, 'user_id' => $reporter->id, 'event_type' => 'exam.incident.reported']);
-        $this->actingAs($reporter)->post($root.'/incidents/'.$incident->id.'/evidence', ['evidence' => UploadedFile::fake()->create('evidence.pdf', 40, 'application/pdf')])->assertRedirect();
+        $this->actingAs($reporter)->post($root.'/incidents/'.$incident->id.'/evidence', ['evidence' => UploadedFile::fake()->createWithContent('evidence.pdf', "%PDF-1.4\n".str_repeat('evidence ', 40)."\n%%EOF")])->assertRedirect();
         $evidence = DB::table('exam_incident_evidence')->where('tenant_id', $f['tenant']->id)->firstOrFail();
         self::assertSame('quarantined', $evidence->scan_status);
         self::assertStringContainsString('/quarantine/', $evidence->private_path);
@@ -188,7 +188,7 @@ final class ExaminationCandidateGovernanceTest extends TestCase
                 return 'test-infected-scanner';
             }
         };
-        $this->actingAs($reporter)->post($root.'/incidents/'.$incident->id.'/evidence', ['evidence' => UploadedFile::fake()->create('suspect.pdf', 30, 'application/pdf')])->assertRedirect();
+        $this->actingAs($reporter)->post($root.'/incidents/'.$incident->id.'/evidence', ['evidence' => UploadedFile::fake()->createWithContent('suspect.pdf', "%PDF-1.4\n".str_repeat('suspect ', 30)."\n%%EOF")])->assertRedirect();
         $infected = DB::table('exam_incident_evidence')->where('incident_id', $incident->id)->where('scan_status', 'quarantined')->orderByDesc('id')->firstOrFail();
         (new ScanExamIncidentEvidence((int) $f['tenant']->id, (int) $infected->id))->handle($infectedScanner, app(TenantContext::class), app(AuditRecorder::class));
         self::assertSame('infected', DB::table('exam_incident_evidence')->where('id', $infected->id)->value('scan_status'));
@@ -231,7 +231,7 @@ final class ExaminationCandidateGovernanceTest extends TestCase
         }
 
         $this->actingAs($f['owner'])->post($root.'/incidents/'.$incident->id.'/evidence', [
-            'evidence' => UploadedFile::fake()->create('closed-incident.pdf', 20, 'application/pdf'),
+            'evidence' => UploadedFile::fake()->createWithContent('closed-incident.pdf', "%PDF-1.4\nclosed\n%%EOF"),
         ])->assertStatus(409);
         $action = 'reopen';
         $notes = 'New verified evidence requires a follow-up investigation.';

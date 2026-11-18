@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use App\Domain\Identity\PermissionCatalog;
-use Dotenv\Dotenv;
+use Tests\Support\CentralTestingEnvironment;
 use Tests\Support\Phase04MySqlGrantPolicy;
 use Tests\Support\Phase08MigrationRecoveryPolicy;
 use Tests\Support\Phase08MySqlTestTarget;
@@ -13,7 +13,6 @@ require dirname(__DIR__).'/vendor/autoload.php';
 
 $root = dirname(__DIR__);
 $framework = $root.DIRECTORY_SEPARATOR.'storage'.DIRECTORY_SEPARATOR.'framework';
-$envFile = $root.DIRECTORY_SEPARATOR.Target::CONFIGURATION;
 $manifestPath = $framework.DIRECTORY_SEPARATOR.Target::MANIFEST;
 $intentPath = $framework.DIRECTORY_SEPARATOR.'.phase08-mysql-migration-intent.json';
 $lockPath = $framework.DIRECTORY_SEPARATOR.Target::LOCK_FILE;
@@ -22,44 +21,15 @@ if (! in_array($mode, ['--preflight', '--run', '--recover', '--resume-recovery']
     fwrite(STDERR, "Usage: php tests/run-phase08-mysql.php --preflight|--run|--recover|--resume-recovery\n");
     exit(2);
 }
-if (! is_file($envFile) || is_link($envFile)) {
-    fwrite(STDERR, 'Missing regular ignored configuration '.$envFile.".\n");
-    exit(2);
-}
-$ignored = proc_open(['git', 'check-ignore', '--quiet', '--', Target::CONFIGURATION], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $root);
-if (! is_resource($ignored)) {
-    fwrite(STDERR, "Could not verify private environment ignore status.\n");
-    exit(2);
-}
-fclose($pipes[0]);
-fclose($pipes[1]);
-fclose($pipes[2]);
-if (proc_close($ignored) !== 0) {
-    fwrite(STDERR, "Phase 08 private environment file is not Git-ignored.\n");
-    exit(2);
-}
 try {
-    $env = Dotenv::parse((string) file_get_contents($envFile));
-} catch (Throwable) {
-    fwrite(STDERR, "Phase 08 environment file could not be parsed.\n");
+    $env = CentralTestingEnvironment::mysqlPhase($root, '08', Target::DATABASE, Target::ACCOUNT, Target::AUTHORIZATION, requireDisposable: true);
+} catch (RuntimeException $exception) {
+    fwrite(STDERR, $exception->getMessage()." No database was contacted.\n");
     exit(2);
 }
-$required = [
-    'DB_CONNECTION' => 'mysql', 'DB_HOST' => '127.0.0.1', 'DB_PORT' => '3306',
-    'DB_DATABASE' => Target::DATABASE, 'DB_USERNAME' => Target::ACCOUNT,
-    'APP_ENV' => 'testing', 'PHASE08_TEST_SCHEMA_DISPOSABLE' => 'true',
-    'PHASE08_TEST_SCHEMA_AUTHORIZATION' => Target::AUTHORIZATION,
-];
-foreach ($required as $key => $value) {
-    if (($env[$key] ?? null) !== $value) {
-        fwrite(STDERR, "Phase 08 configuration identity/authorization check failed for {$key}.\n");
-        exit(2);
-    }
-}
-if (trim($env['DB_PASSWORD'] ?? '') === '' || ($env['DB_URL'] ?? '') !== '') {
-    fwrite(STDERR, "Phase 08 database credentials are missing or DB_URL is set.\n");
-    exit(2);
-}
+$env['TESTING_PROFILE'] = 'mysql';
+$env['TESTING_PHASE'] = '08';
+CentralTestingEnvironment::install($env);
 $handle = @fopen($lockPath, 'c');
 if (! is_resource($handle) || ! flock($handle, LOCK_EX | LOCK_NB)) {
     fwrite(STDERR, "Another Phase 08 MySQL run holds the exclusive local lock.\n");

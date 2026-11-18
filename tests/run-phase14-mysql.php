@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use Dotenv\Dotenv;
+use Tests\Support\CentralTestingEnvironment;
 use Tests\Support\Phase04MySqlGrantPolicy;
 use Tests\Support\Phase14MySqlTestTarget as Target;
 use Tests\Support\Phase14OwnershipManifestPolicy;
@@ -12,55 +12,26 @@ require dirname(__DIR__).'/vendor/autoload.php';
 
 $root = dirname(__DIR__);
 $framework = $root.DIRECTORY_SEPARATOR.'storage'.DIRECTORY_SEPARATOR.'framework';
-$environmentPath = $root.DIRECTORY_SEPARATOR.Target::CONFIGURATION;
 $manifestPath = $framework.DIRECTORY_SEPARATOR.Target::MANIFEST;
 $intentPath = $framework.DIRECTORY_SEPARATOR.Target::INTENT;
 $mode = $argv[1] ?? '';
-if (! in_array($mode, ['--preflight', '--run'], true)) {
-    fwrite(STDERR, "Usage: php tests/run-phase14-mysql.php --preflight|--run\n");
+if (! in_array($mode, ['--preflight', '--inspect-fixtures', '--run'], true)) {
+    fwrite(STDERR, "Usage: php tests/run-phase14-mysql.php --preflight|--inspect-fixtures|--run\n");
     exit(2);
 }
 if ($mode === '--run' && ! is_file($root.DIRECTORY_SEPARATOR.'tests'.DIRECTORY_SEPARATOR.'Support'.DIRECTORY_SEPARATOR.'phase14-grade-concurrency.php')) {
     fwrite(STDERR, "Phase 14 independent-session concurrency probes are incomplete; no database was contacted.\n");
     exit(2);
 }
-if (! is_file($environmentPath) || is_link($environmentPath)) {
-    fwrite(STDERR, 'Missing regular private configuration '.Target::CONFIGURATION."; no database was contacted.\n");
-    exit(2);
-}
-$ignoreCheck = proc_open(['git', 'check-ignore', '--quiet', '--', Target::CONFIGURATION], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $root);
-if (! is_resource($ignoreCheck)) {
-    fwrite(STDERR, "Could not verify private environment ignore status.\n");
-    exit(2);
-}
-foreach ($pipes as $pipe) {
-    fclose($pipe);
-}
-if (proc_close($ignoreCheck) !== 0) {
-    fwrite(STDERR, 'Phase 14 private environment must be Git-ignored.'.PHP_EOL);
-    exit(2);
-}
 try {
-    $environment = Dotenv::parse((string) file_get_contents($environmentPath));
-} catch (Throwable) {
-    fwrite(STDERR, "Phase 14 private environment could not be parsed.\n");
+    $environment = CentralTestingEnvironment::mysqlPhase($root, '14', Target::DATABASE, Target::ACCOUNT, Target::AUTHORIZATION, requireDisposable: true);
+} catch (RuntimeException $exception) {
+    fwrite(STDERR, $exception->getMessage()." No database was contacted.\n");
     exit(2);
 }
-$required = [
-    'APP_ENV' => 'testing', 'DB_CONNECTION' => 'mysql', 'DB_HOST' => '127.0.0.1', 'DB_PORT' => '3306',
-    'DB_DATABASE' => Target::DATABASE, 'DB_USERNAME' => Target::ACCOUNT,
-    'PHASE14_TEST_SCHEMA_DISPOSABLE' => 'true', 'PHASE14_TEST_SCHEMA_AUTHORIZATION' => Target::AUTHORIZATION,
-];
-foreach ($required as $key => $value) {
-    if (($environment[$key] ?? '') !== $value) {
-        fwrite(STDERR, "Phase 14 target/authorization check failed for {$key}; no database changes were made.\n");
-        exit(2);
-    }
-}
-if (trim((string) ($environment['DB_PASSWORD'] ?? '')) === '' || trim((string) ($environment['DB_PASSWORD'] ?? '')) === 'replace-locally' || ($environment['DB_URL'] ?? '') !== '') {
-    fwrite(STDERR, "Phase 14 database credentials are missing or DB_URL is set; no database changes were made.\n");
-    exit(2);
-}
+$environment['TESTING_PROFILE'] = 'mysql';
+$environment['TESTING_PHASE'] = '14';
+CentralTestingEnvironment::install($environment);
 $lockPath = $framework.DIRECTORY_SEPARATOR.Target::LOCK_FILE;
 $lock = @fopen($lockPath, 'c');
 if (! is_resource($lock) || ! flock($lock, LOCK_EX | LOCK_NB)) {
@@ -118,6 +89,14 @@ try {
     $pending = $initial ? $migrations : array_slice($migrations, count($appliedNames));
     if (! $initial && count($pending) > 1) {
         throw new RuntimeException('Phase 14 upgrades are limited to one reviewed additive migration per run.');
+    }
+    if ($mode === '--inspect-fixtures') {
+        $fixtures = $pdo->query("SELECT id,created_at FROM tenants WHERE slug REGEXP '^phase14-concurrency-[0-9a-f]{32}$' ORDER BY id")->fetchAll();
+        fwrite(STDOUT, 'Phase 14 read-only fixture inventory passed: database='.Target::DATABASE.' tenants='.count($fixtures).PHP_EOL);
+        foreach ($fixtures as $fixture) {
+            fwrite(STDOUT, 'owned_harness_tenant_id='.(int) $fixture['id'].' created_at='.$fixture['created_at'].PHP_EOL);
+        }
+        exit(0);
     }
     if ($mode === '--preflight') {
         fwrite(STDOUT, sprintf("Phase 14 read-only preflight passed: database=%s account=%s@%s MySQL=%s objects=%d migrations=%d pending_reviewed_migrations=%d.\n", Target::DATABASE, $username, $host, $identity['version'], count($before['objects']), count($before['migrations']), count($pending)));

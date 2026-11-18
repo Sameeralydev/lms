@@ -10,6 +10,7 @@ use App\Mail\TenantInvitationMail;
 use App\Models\Campus;
 use App\Models\Institution;
 use App\Models\Role;
+use App\Models\SisStudent;
 use App\Models\Tenant;
 use App\Models\TenantDomain;
 use App\Models\TenantInvitation;
@@ -90,6 +91,120 @@ class TenantManagementTest extends TestCase
                 ->where('auth.tenant.slug', $tenant->slug)
                 ->where('auth.tenant.roles', ['Institution Owner'])
                 ->where('auth.tenant.permissions', fn (Collection $permissions): bool => $permissions->contains('tenant.view') && $permissions->contains('members.invite')));
+    }
+
+    public function test_dashboard_exposes_real_module_entry_points_only_to_authorized_members(): void
+    {
+        $owner = User::factory()->create();
+        $tenant = $this->provision($owner, 'Dashboard Academy');
+        $student = User::factory()->create();
+        $membership = $this->createMember($tenant, $student, 'student');
+        $context = app(TenantContext::class);
+        $context->set($tenant, $membership);
+        try {
+            $institution = Institution::query()->firstOrFail();
+            SisStudent::query()->create([
+                'institution_id' => $institution->getKey(),
+                'user_id' => $student->getKey(),
+                'student_number' => 'DASH-'.Str::upper(Str::random(8)),
+                'registration_reference' => 'DASH-REF-'.Str::upper(Str::random(8)),
+                'legal_first_name' => 'Dashboard',
+                'legal_last_name' => 'Learner',
+                'admission_date' => today()->subYear(),
+                'status' => 'active',
+                'student_type' => 'standard',
+            ]);
+        } finally {
+            $context->clear();
+        }
+
+        $this->actingAs($owner)->get("/t/{$tenant->slug}/dashboard")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->where('cards', function (Collection $cards): bool {
+                $links = $cards->pluck('href')->all();
+
+                return in_array('/t/dashboard-academy/academics/grades', $links, true)
+                    && in_array('/t/dashboard-academy/academics/examinations', $links, true)
+                    && in_array('/t/dashboard-academy/assessments/analytics', $links, true)
+                    && in_array('/t/dashboard-academy/attendance/reports', $links, true);
+            }));
+
+        $this->actingAs($student)->get("/t/{$tenant->slug}/dashboard")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('cards', function (Collection $cards): bool {
+                    $links = $cards->pluck('href')->all();
+
+                    return in_array('/t/dashboard-academy/registration', $links, true)
+                        && in_array('/t/dashboard-academy/my-assignments', $links, true)
+                        && in_array('/t/dashboard-academy/examinations/my', $links, true)
+                        && ! in_array('/t/dashboard-academy/academics/records', $links, true)
+                        && ! in_array('/t/dashboard-academy/academics/examinations', $links, true);
+                })
+                ->where('metrics', fn (Collection $metrics): bool => $metrics->pluck('label')->contains('Upcoming examinations')
+                    && $metrics->pluck('label')->contains('Released examination results')));
+    }
+
+    public function test_academic_administrator_dashboard_uses_its_administrative_workspace_identity(): void
+    {
+        $owner = User::factory()->create();
+        $tenant = $this->provision($owner, 'Academic Dashboard Academy');
+        $academicAdministrator = User::factory()->create();
+        $this->createMember($tenant, $academicAdministrator, 'academic.admin');
+
+        $this->actingAs($academicAdministrator)->get("/t/{$tenant->slug}/dashboard")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->component('workspace/dashboard')
+                ->where('workspace.title', 'Academic administration')
+                ->where('workspace.description', 'Continue academic planning, curriculum governance, scheduling, and education quality work.'));
+    }
+
+    public function test_examination_staff_receive_role_specific_scoped_dashboard_metrics(): void
+    {
+        $owner = User::factory()->create();
+        $tenant = $this->provision($owner, 'Examination Dashboard Academy');
+        $examiner = User::factory()->create();
+        $invigilator = User::factory()->create();
+        $registrar = User::factory()->create();
+        $this->createMember($tenant, $examiner, 'examiner');
+        $this->createMember($tenant, $invigilator, 'exam.invigilator');
+        $this->createMember($tenant, $registrar, 'sis.registrar');
+
+        $this->actingAs($examiner)->get("/t/{$tenant->slug}/dashboard")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('workspace.title', 'Examiner workspace')
+                ->where('metrics', fn (Collection $metrics): bool => $metrics->pluck('label')->all() === ['Active courses', 'Assigned scripts to mark', 'Marking in progress'])
+                ->where('cards', fn (Collection $cards): bool => $cards->pluck('href')->contains("/t/{$tenant->slug}/academics/examinations/marking")));
+
+        $this->actingAs($invigilator)->get("/t/{$tenant->slug}/dashboard")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('workspace.title', 'Invigilator workspace')
+                ->where('metrics', fn (Collection $metrics): bool => $metrics->pluck('label')->all() === ['Active courses', 'Assigned invigilation duties', 'Upcoming invigilation sessions'])
+                ->where('cards', fn (Collection $cards): bool => $cards->pluck('href')->contains("/t/{$tenant->slug}/examination-duties")));
+
+        $this->actingAs($registrar)->get("/t/{$tenant->slug}/dashboard")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('workspace.title', 'Registrar workspace')
+                ->where('cards', fn (Collection $cards): bool => $cards->pluck('href')->contains("/t/{$tenant->slug}/registrar/enrollment")));
+    }
+
+    public function test_platform_dashboard_hides_tenant_creation_action_without_create_permission(): void
+    {
+        $operator = User::factory()->create();
+        $role = PermissionCatalog::createPlatformRole(
+            'platform.dashboard_reader',
+            'Platform Dashboard Reader',
+            'Can view platform-level aggregate counts only.',
+            ['platform.dashboard.view'],
+        );
+        $operator->platformRoles()->attach($role->getKey(), ['assigned_by' => $operator->getKey()]);
+
+        $this->actingAs($operator)->get('/platform/dashboard')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->where('auth.platformPermissions', ['platform.dashboard.view']));
     }
 
     public function test_verified_custom_domain_resolves_and_is_bound_to_its_tenant(): void

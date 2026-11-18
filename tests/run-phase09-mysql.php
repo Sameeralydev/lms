@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use Dotenv\Dotenv;
+use Tests\Support\CentralTestingEnvironment;
 use Tests\Support\Phase04MySqlGrantPolicy;
 use Tests\Support\Phase09MySqlTestTarget as Target;
 use Tests\Support\Phase09OwnershipManifestPolicy;
@@ -11,7 +11,6 @@ require dirname(__DIR__).'/vendor/autoload.php';
 
 $root = dirname(__DIR__);
 $framework = $root.DIRECTORY_SEPARATOR.'storage'.DIRECTORY_SEPARATOR.'framework';
-$envPath = $root.DIRECTORY_SEPARATOR.Target::CONFIGURATION;
 $manifestPath = $framework.DIRECTORY_SEPARATOR.Target::MANIFEST;
 $intentPath = $framework.DIRECTORY_SEPARATOR.Target::INTENT;
 $mode = $argv[1] ?? '';
@@ -19,39 +18,15 @@ if (! in_array($mode, ['--preflight', '--run'], true)) {
     fwrite(STDERR, "Usage: php tests/run-phase09-mysql.php --preflight|--run\n");
     exit(2);
 }
-if (! is_file($envPath) || is_link($envPath)) {
-    fwrite(STDERR, 'Missing regular private configuration '.Target::CONFIGURATION."; no database was contacted.\n");
-    exit(2);
-}
-$check = proc_open(['git', 'check-ignore', '--quiet', '--', Target::CONFIGURATION], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $root);
-if (! is_resource($check)) {
-    fwrite(STDERR, "Could not verify private environment ignore status.\n");
-    exit(2);
-}
-foreach ($pipes as $pipe) {
-    fclose($pipe);
-}
-if (proc_close($check) !== 0) {
-    fwrite(STDERR, "Phase 09 private environment file must be Git-ignored.\n");
-    exit(2);
-}
 try {
-    $env = Dotenv::parse((string) file_get_contents($envPath));
-} catch (Throwable) {
-    fwrite(STDERR, "Phase 09 environment file could not be parsed.\n");
+    $env = CentralTestingEnvironment::mysqlPhase($root, '09', Target::DATABASE, Target::ACCOUNT, Target::AUTHORIZATION, requireDisposable: true);
+} catch (RuntimeException $exception) {
+    fwrite(STDERR, $exception->getMessage()." No database was contacted.\n");
     exit(2);
 }
-$required = ['APP_ENV' => 'testing', 'DB_CONNECTION' => 'mysql', 'DB_HOST' => '127.0.0.1', 'DB_PORT' => '3306', 'DB_DATABASE' => Target::DATABASE, 'DB_USERNAME' => Target::ACCOUNT, 'PHASE09_TEST_SCHEMA_DISPOSABLE' => 'true', 'PHASE09_TEST_SCHEMA_AUTHORIZATION' => Target::AUTHORIZATION];
-foreach ($required as $key => $value) {
-    if (($env[$key] ?? null) !== $value) {
-        fwrite(STDERR, "Phase 09 target or authorization check failed for {$key}.\n");
-        exit(2);
-    }
-}
-if (trim((string) ($env['DB_PASSWORD'] ?? '')) === '' || ($env['DB_URL'] ?? '') !== '') {
-    fwrite(STDERR, "Phase 09 dedicated database credentials are missing or DB_URL is set.\n");
-    exit(2);
-}
+$env['TESTING_PROFILE'] = 'mysql';
+$env['TESTING_PHASE'] = '09';
+CentralTestingEnvironment::install($env);
 $lockPath = $framework.DIRECTORY_SEPARATOR.Target::LOCK_FILE;
 $lockHandle = @fopen($lockPath, 'c');
 if (! is_resource($lockHandle) || ! flock($lockHandle, LOCK_EX | LOCK_NB)) {

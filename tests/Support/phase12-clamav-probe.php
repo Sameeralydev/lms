@@ -5,28 +5,25 @@ declare(strict_types=1);
 namespace Tests\Support\Phase12ScannerProbe;
 
 use App\Domain\Admissions\Documents\AdmissionDocumentScanner;
-use Dotenv\Dotenv;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Tests\Support\CentralTestingEnvironment;
 use Throwable;
 
 $root = dirname(__DIR__, 2);
 require $root.'/vendor/autoload.php';
-$configuration = $root.'/.env.phase12.testing';
-if (! is_file($configuration) || is_link($configuration)) {
-    fwrite(STDERR, "Phase 12 scanner probe requires the ignored local Phase 12 environment file.\n");
-    exit(2);
-}
-$environment = Dotenv::parse((string) file_get_contents($configuration));
+$profile = CentralTestingEnvironment::read($root);
+$environment = CentralTestingEnvironment::sqlite($root, $profile);
+$phasePrefix = 'TESTING_MYSQL_PHASE12_';
 foreach (['ADMISSIONS_DOCUMENT_SCANNER', 'ADMISSIONS_CLAMAV_BINARY', 'ADMISSIONS_CLAMAV_SIGNATURE_DIRECTORY', 'ADMISSIONS_SIGTOOL_BINARY', 'ADMISSIONS_CLAMAV_TIMEOUT', 'ADMISSIONS_CLAMAV_MAX_SIGNATURE_AGE_HOURS', 'ADMISSIONS_CLAMAV_TIMEZONE'] as $key) {
-    if (isset($environment[$key])) {
-        putenv($key.'='.$environment[$key]);
-        $_ENV[$key] = $_SERVER[$key] = $environment[$key];
+    if (isset($profile[$phasePrefix.$key])) {
+        $environment[$key] = $profile[$phasePrefix.$key];
     }
 }
+CentralTestingEnvironment::install($environment);
 if (($environment['ADMISSIONS_DOCUMENT_SCANNER'] ?? '') !== 'clamav') {
-    fwrite(STDERR, "Phase 12 scanner probe requires the real ClamAV adapter to be configured.\n");
+    fwrite(STDERR, "Phase 12 scanner probe requires the real ClamAV adapter in the centralized .env.testing profile.\n");
     exit(2);
 }
 

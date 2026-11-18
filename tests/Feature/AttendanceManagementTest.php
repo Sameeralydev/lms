@@ -322,7 +322,7 @@ class AttendanceManagementTest extends TestCase
         Queue::fake();
         $this->actingAs($student)->post("{$base}/entries/{$entryId}/justifications", [
             'category' => 'illness', 'reason' => 'Supporting medical evidence is attached for review.',
-            'evidence' => UploadedFile::fake()->create('support.png', 12, 'image/png'),
+            'evidence' => UploadedFile::fake()->createWithContent('support.png', (string) base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/Z6sAAAAASUVORK5CYII=')),
         ])->assertRedirect()->assertSessionHasNoErrors();
         $justificationId = (int) DB::table('attendance_justifications')->where('entry_id', $entryId)->value('id');
         $evidence = DB::table('attendance_justification_evidence')->where('justification_id', $justificationId)->first();

@@ -48,6 +48,7 @@
         "test": [
             "@php tests/run-tests.php"
         ],
+        "test:sqlite": "@php tests/run.php --phase=all --profile=sqlite",
         "test:phase08:mysql": "@php tests/run-phase08-mysql.php --run",
         "test:phase08:preflight": "@php tests/run-phase08-mysql.php --preflight",
         "analyse": [

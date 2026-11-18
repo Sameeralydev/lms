@@ -136,6 +136,19 @@ trait GuardedRefreshDatabase
             return;
         }
 
+        if (config('database.default') === 'mysql'
+            && config('database.connections.mysql.database') === Phase15MySqlTestTarget::DATABASE) {
+            $connection = DB::connection('mysql');
+            Phase15ProbeAuthorization::assertAuthorized($connection->getPdo(), TestDatabaseGuard::currentEnvironment());
+            if (! RefreshDatabaseState::$migrated) {
+                $this->updateLocalCacheOfInMemoryDatabases();
+                RefreshDatabaseState::$migrated = true;
+            }
+            $this->beginDatabaseTransaction();
+
+            return;
+        }
+
         $this->refreshTestDatabaseWithLaravelMigrations();
     }
 }

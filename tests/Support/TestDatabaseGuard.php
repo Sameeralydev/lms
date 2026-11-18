@@ -24,6 +24,7 @@ final class TestDatabaseGuard
         bool $allowPhase12Runner = false,
         bool $allowPhase13Runner = false,
         bool $allowPhase14Runner = false,
+        bool $allowPhase15Runner = false,
     ): void {
         if (($environment['APP_ENV'] ?? '') !== 'testing') {
             throw new RuntimeException('Refusing to run tests unless APP_ENV is testing.');
@@ -230,6 +231,22 @@ final class TestDatabaseGuard
             throw new RuntimeException('Phase 14 MySQL tests require the exact verified disposable target through its guarded runner.');
         }
 
+        if ($connection === 'mysql' && $database === Phase15MySqlTestTarget::DATABASE) {
+            $username = strtolower($environment['DB_USERNAME'] ?? '');
+            $host = strtolower($environment['DB_HOST'] ?? '');
+            $port = $environment['DB_PORT'] ?? '';
+            $runnerAuthorized = $allowPhase15Runner || ($environment['PHASE15_MYSQL_PREFLIGHT_PASSED'] ?? '') === 'true';
+            $disposable = ($environment['PHASE15_TEST_SCHEMA_DISPOSABLE'] ?? '') === 'true';
+            $authorization = ($environment['PHASE15_TEST_SCHEMA_AUTHORIZATION'] ?? '') === Phase15MySqlTestTarget::AUTHORIZATION;
+            $pinnedPort = $environment['TESTING_MYSQL_PHASE15_PORT'] ?? '';
+            if ($runnerAuthorized && $disposable && $authorization && $username === Phase15MySqlTestTarget::ACCOUNT && $host === '127.0.0.1'
+                && $pinnedPort !== '' && $port === $pinnedPort && filter_var($port, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1024, 'max_range' => 65535]]) !== false
+                && ($environment['DB_SOCKET'] ?? '') === '') {
+                return;
+            }
+            throw new RuntimeException('Phase 15 MySQL tests require the exact verified disposable target through its guarded runner.');
+        }
+
         throw new RuntimeException('Refusing unsafe test database configuration. Use SQLite :memory: or an explicitly allowlisted phase-specific disposable MySQL schema.');
     }
 
@@ -251,6 +268,9 @@ final class TestDatabaseGuard
             'DB_CHARSET',
             'DB_COLLATION',
             'DB_URL',
+            'TESTING_MYSQL_PHASE15_PORT',
+            'TESTING_MYSQL_PHASE15_SERVER_UUID',
+            'TESTING_MYSQL_PHASE15_DATA_DIRECTORY',
             'PHASE05_MYSQL_PREFLIGHT_PASSED',
             'PHASE06_MYSQL_PREFLIGHT_PASSED',
             'PHASE06_TEST_SCHEMA_DISPOSABLE',
@@ -277,6 +297,9 @@ final class TestDatabaseGuard
             'PHASE14_MYSQL_PREFLIGHT_PASSED',
             'PHASE14_TEST_SCHEMA_DISPOSABLE',
             'PHASE14_TEST_SCHEMA_AUTHORIZATION',
+            'PHASE15_MYSQL_PREFLIGHT_PASSED',
+            'PHASE15_TEST_SCHEMA_DISPOSABLE',
+            'PHASE15_TEST_SCHEMA_AUTHORIZATION',
             'ADMISSIONS_DOCUMENT_SCANNER',
             'ADMISSIONS_CLAMAV_BINARY',
             'ADMISSIONS_CLAMAV_SIGNATURE_DIRECTORY',

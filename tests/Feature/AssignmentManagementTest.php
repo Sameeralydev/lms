@@ -174,7 +174,7 @@ final class AssignmentManagementTest extends TestCase
         $base = '/t/'.$fixture['tenant']->slug;
         $this->actingAs($fixture['student'])->post($base.'/my-assignments/recipients/'.$recipient->getKey().'/draft', ['idempotency_key' => (string) Str::uuid()])->assertRedirect();
         $attempt = AssignmentAttempt::withoutGlobalScope('tenant')->where('tenant_id', $fixture['tenant']->getKey())->firstOrFail();
-        $this->actingAs($fixture['student'])->post($base.'/my-assignments/recipients/'.$recipient->getKey().'/artifacts', ['files' => [UploadedFile::fake()->create('solution.pdf', 120, 'application/pdf')]])->assertRedirect();
+        $this->actingAs($fixture['student'])->post($base.'/my-assignments/recipients/'.$recipient->getKey().'/artifacts', ['files' => [UploadedFile::fake()->createWithContent('solution.pdf', "%PDF-1.4\n".str_repeat('solution ', 120)."\n%%EOF")]])->assertRedirect();
         $artifact = AssignmentArtifact::withoutGlobalScope('tenant')->where('tenant_id', $fixture['tenant']->getKey())->firstOrFail();
         $this->assertSame('quarantined', $artifact->scan_status);
         $this->actingAs($fixture['student'])->post($base.'/my-assignments/recipients/'.$recipient->getKey().'/submit', ['attempt_id' => $attempt->getKey()])->assertSessionHasErrors('response_text');
@@ -296,7 +296,7 @@ final class AssignmentManagementTest extends TestCase
         $base = '/t/'.$fixture['tenant']->slug;
         $this->actingAs($fixture['student'])->post($base.'/my-assignments/recipients/'.$recipient->getKey().'/draft', ['idempotency_key' => (string) Str::uuid()])->assertRedirect();
         $attempt = AssignmentAttempt::withoutGlobalScope('tenant')->where('tenant_id', $fixture['tenant']->getKey())->firstOrFail();
-        $this->actingAs($fixture['student'])->post($base.'/my-assignments/recipients/'.$recipient->getKey().'/artifacts', ['files' => [UploadedFile::fake()->create('suspect.pdf', 100, 'application/pdf')]])->assertRedirect();
+        $this->actingAs($fixture['student'])->post($base.'/my-assignments/recipients/'.$recipient->getKey().'/artifacts', ['files' => [UploadedFile::fake()->createWithContent('suspect.pdf', "%PDF-1.4\n".str_repeat('suspect ', 100)."\n%%EOF")]])->assertRedirect();
         $artifact = AssignmentArtifact::withoutGlobalScope('tenant')->where('tenant_id', $fixture['tenant']->getKey())->firstOrFail();
         $scanner = new class implements AdmissionDocumentScanner
         {

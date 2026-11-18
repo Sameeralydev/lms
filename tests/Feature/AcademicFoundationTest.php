@@ -412,6 +412,12 @@ class AcademicFoundationTest extends TestCase
         $gradingPermissions->up();
         $recordPermissions = require database_path('migrations/2026_11_10_000005_add_official_record_permissions.php');
         $recordPermissions->up();
+        $analyticsPermissions = require database_path('migrations/2026_11_11_000000_backfill_academic_analytics_permissions.php');
+        $analyticsPermissions->up();
+        $analyticsPermissions->up();
+        $savedReportPermissions = require database_path('migrations/2026_11_13_000001_backfill_academic_saved_report_permission.php');
+        $savedReportPermissions->up();
+        $savedReportPermissions->up();
 
         $ownerRole = Role::query()->where('tenant_id', $tenant->getKey())->where('key', 'tenant.owner')->firstOrFail();
         $academicRole = Role::query()->where('tenant_id', $tenant->getKey())->where('key', 'academic.admin')->firstOrFail();

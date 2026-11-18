@@ -43,7 +43,7 @@ final class Phase14GuardPolicyTest extends TestCase
     {
         self::assertSame('techmentors_lms_phase14_test', Phase14MySqlTestTarget::DATABASE);
         self::assertSame('techmentors_phase14_test', Phase14MySqlTestTarget::ACCOUNT);
-        self::assertSame('.env.phase14.testing', Phase14MySqlTestTarget::CONFIGURATION);
+        self::assertSame('.env.testing', Phase14MySqlTestTarget::CONFIGURATION);
         self::assertSame('Explicit owner authorization for disposable Phase 14 test schema', Phase14MySqlTestTarget::AUTHORIZATION);
     }
 

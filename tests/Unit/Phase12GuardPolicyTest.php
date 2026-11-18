@@ -3,21 +3,20 @@
 namespace Tests\Unit;
 
 use Dotenv\Dotenv;
-use Tests\Support\Phase12MySqlTestTarget;
 use Tests\Support\Phase12SchemaIdentifierPolicy;
 use Tests\TestCase;
 
 final class Phase12GuardPolicyTest extends TestCase
 {
-    public function test_private_mysql_example_matches_the_guarded_schema_and_authorization(): void
+    public function test_central_example_keeps_mysql_credentials_and_owner_authorization_blank(): void
     {
-        $environment = Dotenv::parse((string) file_get_contents(base_path('.env.phase12.testing.example')));
+        $environment = Dotenv::parse((string) file_get_contents(base_path('.env.testing.example')));
 
-        self::assertSame(Phase12MySqlTestTarget::DATABASE, $environment['DB_DATABASE']);
-        self::assertSame(Phase12MySqlTestTarget::ACCOUNT, $environment['DB_USERNAME']);
-        self::assertSame(Phase12MySqlTestTarget::AUTHORIZATION, $environment['PHASE12_TEST_SCHEMA_AUTHORIZATION']);
-        self::assertSame('true', $environment['PHASE12_TEST_SCHEMA_DISPOSABLE']);
-        self::assertSame('replace-locally', $environment['DB_PASSWORD']);
+        self::assertSame(':memory:', $environment['DB_DATABASE']);
+        self::assertSame('', $environment['TESTING_MYSQL_PHASE12_USERNAME']);
+        self::assertSame('', $environment['TESTING_MYSQL_PHASE12_PASSWORD']);
+        self::assertSame('', $environment['TESTING_MYSQL_PHASE12_DISPOSABLE']);
+        self::assertSame('', $environment['TESTING_MYSQL_PHASE12_AUTHORIZATION']);
         self::assertSame('', $environment['DB_URL']);
     }
 

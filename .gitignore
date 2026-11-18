@@ -3,13 +3,7 @@
 .env
 .env.*
 !.env.example
-!.env.phase04.testing.example
-!.env.phase06.testing.example
-!.env.phase07.testing.example
-!.env.phase08.testing.example
-!.env.phase10.testing.example
-!.env.phase11.testing.example
-!.env.phase12.testing.example
+!.env.testing.example
 .env.backup
 .env.production
 .phpactor.json
@@ -50,8 +44,7 @@
 /storage/framework/.phase10-test-db-ownership.json
 /storage/framework/.phase10-mysql-migration-intent.json
 /storage/framework/.phase10-mysql-test-run.lock
-/.env.phase11.testing
-/.env.phase12.testing
+/.env.phase*.testing
 /storage/framework/.phase11-test-db-ownership.json
 /storage/framework/.phase11-mysql-migration-intent.json
 /storage/framework/.phase11-mysql-test-run.lock
@@ -69,8 +62,6 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 
-!.env.phase13.testing.example
-!.env.phase14.testing.example
 /storage/framework/.phase13-test-db-ownership.json
 /storage/framework/.phase13-mysql-migration-intent.json
 /storage/framework/.phase13-mysql-test-run.lock
@@ -79,6 +70,9 @@ Thumbs.db
 /storage/framework/.phase14-mysql-migration-intent.json
 /storage/framework/.phase14-mysql-migration-intent.json*
 /storage/framework/.phase14-mysql-test-run.lock
+/storage/framework/.phase15-test-db-ownership.json
+/storage/framework/.phase15-mysql-migration-intent.json
+/storage/framework/.phase15-mysql-test-run.lock
 /storage/framework/phase14-grade-*
 /storage/framework/phase13-exam-*
 /storage/**

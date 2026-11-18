@@ -14,13 +14,13 @@ final class Phase13GuardPolicyTest extends TestCase
 {
     public function test_example_environment_matches_the_phase13_target_without_credentials(): void
     {
-        $environment = Dotenv::parse((string) file_get_contents(base_path('.env.phase13.testing.example')));
+        $environment = Dotenv::parse((string) file_get_contents(base_path('.env.testing.example')));
         self::assertSame('testing', $environment['APP_ENV']);
-        self::assertSame(Phase13MySqlTestTarget::DATABASE, $environment['DB_DATABASE']);
-        self::assertSame(Phase13MySqlTestTarget::ACCOUNT, $environment['DB_USERNAME']);
-        self::assertSame('replace-locally', $environment['DB_PASSWORD']);
-        self::assertSame('true', $environment['PHASE13_TEST_SCHEMA_DISPOSABLE']);
-        self::assertSame(Phase13MySqlTestTarget::AUTHORIZATION, $environment['PHASE13_TEST_SCHEMA_AUTHORIZATION']);
+        self::assertSame(':memory:', $environment['DB_DATABASE']);
+        self::assertSame('', $environment['TESTING_MYSQL_PHASE13_USERNAME']);
+        self::assertSame('', $environment['TESTING_MYSQL_PHASE13_PASSWORD']);
+        self::assertSame('', $environment['TESTING_MYSQL_PHASE13_DISPOSABLE']);
+        self::assertSame('', $environment['TESTING_MYSQL_PHASE13_AUTHORIZATION']);
     }
 
     public function test_phase13_test_database_requires_runner_authorization_and_exact_target(): void
