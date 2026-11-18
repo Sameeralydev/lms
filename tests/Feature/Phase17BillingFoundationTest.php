@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Domain\Billing\BillingInvoiceReport;
 use App\Domain\Billing\BillingMoney;
+use App\Domain\Billing\BillingRecurringProcessor;
 use App\Domain\Tenancy\TenantContext;
 use App\Domain\Tenancy\TenantProvisioner;
 use App\Models\BillingInvoice;
@@ -91,7 +92,8 @@ final class Phase17BillingFoundationTest extends TestCase
         $otherInvoice = BillingInvoice::query()->where('student_id', $otherStudent->getKey())->firstOrFail();
         $this->actingAs($owner)->get("{$base}/reports?search=STU-17001")->assertOk()->assertInertia(fn ($page) => $page
             ->component('workspace/billing/reports')->where('summary.invoice_count', 1)->where('summary.invoiced_total', '252.50')
-            ->has('invoices.data', 1)->where('invoices.data.0.invoice_number', $invoice->invoice_number));
+            ->has('invoices.data', 1)->where('invoices.data.0.invoice_number', $invoice->invoice_number)
+            ->where('aging.0.currency', 'USD')->where('aging.0.days_1_30', '252.50'));
         $csv = $this->actingAs($owner)->get("{$base}/reports.csv?search=STU-17001")->assertOk()->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
         self::assertStringContainsString($invoice->invoice_number, $csv->streamedContent());
         $this->assertDatabaseHas('audit_events', ['tenant_id' => $tenant->getKey(), 'event_type' => 'billing.invoice_report.exported']);
@@ -252,8 +254,99 @@ final class Phase17BillingFoundationTest extends TestCase
         self::assertSame(3, \DB::table('billing_adjustment_events')->where('adjustment_id', $adjustmentId)->count());
         self::assertSame(2, \DB::table('billing_concession_events')->where('concession_id', $concessionId)->count());
         $this->assertDatabaseHas('audit_events', ['tenant_id' => $tenant->getKey(), 'event_type' => 'billing.adjustment.posted']);
+        $this->actingAs($owner)->post("{$base}/invoices/{$invoice->getKey()}/cancel", ['reason' => 'Cannot discard posted adjustment history.'])->assertSessionHasErrors('invoice');
         $this->actingAs($owner)->get("{$base}/ledger/{$student->getKey()}")->assertOk()->assertInertia(fn ($page) => $page
             ->component('workspace/billing/ledger')->where('currency_totals.0.balance', '160.00')->has('entries', 2));
+
+        $reversalKey = (string) Str::uuid();
+        $this->actingAs($poster)->post("{$base}/adjustments/{$adjustmentId}/reverse", ['reason' => 'Reverse the posted correction.', 'idempotency_key' => $reversalKey])->assertSessionHasNoErrors();
+        $reversalId = (int) \DB::table('billing_adjustments')->where('reverses_adjustment_id', $adjustmentId)->value('id');
+        self::assertNotSame(0, $reversalId);
+        // The original requester reviews, while a different operator posts the compensating entry.
+        $this->actingAs($owner)->post("{$base}/adjustments/{$reversalId}/review", ['decision' => 'approve', 'note' => 'Reversal supported by source documents.'])->assertSessionHasNoErrors();
+        $reversalPoster = User::factory()->create();
+        $this->member($tenant, $ownerMembership, $reversalPoster, 'finance.manager');
+        $this->actingAs($reversalPoster)->post("{$base}/adjustments/{$reversalId}/post")->assertSessionHasNoErrors();
+        self::assertSame('180.00', (string) $invoice->fresh()->adjusted_total);
+        self::assertSame('reversed', \DB::table('billing_adjustments')->where('id', $adjustmentId)->value('status'));
+        self::assertSame('posted', \DB::table('billing_adjustments')->where('id', $reversalId)->value('status'));
+        $this->actingAs($owner)->get("{$base}/ledger/{$student->getKey()}")->assertOk()->assertInertia(fn ($page) => $page
+            ->component('workspace/billing/ledger')->where('currency_totals.0.balance', '180.00')->has('entries', 3));
+        $this->actingAs($poster)->post("{$base}/adjustments/{$adjustmentId}/reverse", ['reason' => 'A second reversal request.', 'idempotency_key' => (string) Str::uuid()])->assertSessionHasNoErrors();
+        self::assertSame(1, \DB::table('billing_adjustments')->where('reverses_adjustment_id', $adjustmentId)->count(), 'A posted adjustment can only receive one compensating reversal.');
+    }
+
+    public function test_learner_can_view_only_their_own_financial_statement(): void
+    {
+        [$tenant, $owner, $membership] = $this->provision('Billing Learner Statement Academy');
+        $student = $this->student($tenant, $membership, 'STU-17020');
+        $otherStudent = $this->student($tenant, $membership, 'STU-17021');
+        $learner = User::factory()->create();
+        $this->member($tenant, $membership, $learner, 'student');
+        $context = app(TenantContext::class);
+        $context->set($tenant, $membership);
+        try {
+            $student->forceFill(['user_id' => $learner->getKey()])->save();
+        } finally {
+            $context->clear();
+        }
+        $this->actingAs($learner)->get("/t/{$tenant->slug}/billing/my-ledger/{$student->getKey()}")->assertOk()->assertInertia(fn ($page) => $page
+            ->component('workspace/billing/ledger')->where('student.id', $student->getKey())->has('entries', 0));
+        $this->actingAs($learner)->get("/t/{$tenant->slug}/billing/my-ledger/{$student->getKey()}.csv")->assertOk()->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
+        $this->actingAs($learner)->get("/t/{$tenant->slug}/billing/my-ledger/{$otherStudent->getKey()}")->assertNotFound();
+    }
+
+    public function test_bulk_invoice_issue_is_scoped_bounded_and_idempotent(): void
+    {
+        [$tenant, $owner, $membership] = $this->provision('Billing Bulk Academy');
+        $studentA = $this->student($tenant, $membership, 'STU-17030');
+        $studentB = $this->student($tenant, $membership, 'STU-17031');
+        $learner = User::factory()->create();
+        $this->member($tenant, $membership, $learner, 'student');
+        $context = app(TenantContext::class);
+        $context->set($tenant, $membership);
+        try {
+            $studentA->forceFill(['user_id' => $learner->getKey()])->save();
+        } finally {
+            $context->clear();
+        }
+        $base = "/t/{$tenant->slug}/billing";
+        $this->actingAs($owner)->post("{$base}/fee-heads", ['code' => 'BULK-TUITION', 'name' => 'Bulk tuition', 'category' => 'tuition'])->assertSessionHasNoErrors();
+        $headId = (int) \DB::table('billing_fee_heads')->where('tenant_id', $tenant->getKey())->value('id');
+        $this->actingAs($owner)->post("{$base}/structures", ['code' => 'BULK-26', 'name' => 'Bulk 2026', 'currency' => 'USD', 'frequency' => 'monthly', 'effective_from' => '2026-01-01', 'items' => [['fee_head_id' => $headId, 'unit_amount' => '25.00', 'quantity' => '1']]])->assertSessionHasNoErrors();
+        $structureId = (int) \DB::table('billing_fee_structures')->where('tenant_id', $tenant->getKey())->value('id');
+        $this->actingAs($owner)->post("{$base}/structures/{$structureId}/activate")->assertSessionHasNoErrors();
+        $payload = ['student_ids' => [$studentA->getKey(), $studentB->getKey()], 'fee_structure_id' => $structureId, 'period_start' => '2026-11-01', 'period_end' => '2026-11-30', 'due_on' => '2026-11-20'];
+        $this->actingAs($owner)->post("{$base}/invoices/bulk", $payload)->assertSessionHasNoErrors();
+        self::assertSame(2, BillingInvoice::query()->where('tenant_id', $tenant->getKey())->count());
+        self::assertSame(1, \DB::table('notifications')->where('notifiable_type', User::class)->where('notifiable_id', $learner->getKey())->count(), 'New invoice notification is written to the learner internal inbox once.');
+        $this->actingAs($owner)->post("{$base}/invoices/bulk", $payload)->assertSessionHasNoErrors();
+        self::assertSame(2, BillingInvoice::query()->where('tenant_id', $tenant->getKey())->count(), 'Repeating a bulk request resolves the original per-learner invoices.');
+        $this->actingAs($owner)->get("{$base}/lifecycle")->assertOk()->assertInertia(fn ($page) => $page->component('workspace/billing/lifecycle')->where('permissions.issue', true));
+    }
+
+    public function test_recurring_plan_generates_one_idempotent_invoice_and_advances_period(): void
+    {
+        [$tenant, $owner, $membership] = $this->provision('Billing Recurring Academy');
+        $student = $this->student($tenant, $membership, 'STU-17040');
+        $base = "/t/{$tenant->slug}/billing";
+        $this->actingAs($owner)->post("{$base}/fee-heads", ['code' => 'REC-TUITION', 'name' => 'Recurring tuition', 'category' => 'tuition'])->assertSessionHasNoErrors();
+        $headId = (int) \DB::table('billing_fee_heads')->where('tenant_id', $tenant->getKey())->value('id');
+        $this->actingAs($owner)->post("{$base}/structures", ['code' => 'REC-26', 'name' => 'Recurring monthly', 'currency' => 'USD', 'frequency' => 'monthly', 'effective_from' => '2026-01-01', 'items' => [['fee_head_id' => $headId, 'unit_amount' => '50.00', 'quantity' => '1']]])->assertSessionHasNoErrors();
+        $structureId = (int) \DB::table('billing_fee_structures')->where('tenant_id', $tenant->getKey())->value('id');
+        $this->actingAs($owner)->post("{$base}/structures/{$structureId}/activate")->assertSessionHasNoErrors();
+        $this->actingAs($owner)->post("{$base}/recurring-plans", [
+            'student_id' => $student->getKey(), 'fee_structure_id' => $structureId, 'frequency' => 'monthly',
+            'period_start' => '2026-10-01', 'period_end' => '2026-10-31', 'due_days_after_period' => 5, 'timezone' => 'Asia/Karachi',
+        ])->assertSessionHasNoErrors();
+        self::assertSame(1, \DB::table('billing_recurring_plans')->where('tenant_id', $tenant->getKey())->count());
+        $result = app(BillingRecurringProcessor::class)->processDue();
+        self::assertSame(['processed' => 1, 'failed' => 0], $result);
+        self::assertSame(1, \DB::table('billing_invoices')->where('tenant_id', $tenant->getKey())->count());
+        self::assertDatabaseHas('billing_recurring_runs', ['tenant_id' => $tenant->getKey(), 'status' => 'completed', 'attempts' => 1]);
+        self::assertSame('2026-11-01', substr((string) \DB::table('billing_recurring_plans')->where('tenant_id', $tenant->getKey())->value('period_start'), 0, 10));
+        self::assertSame(['processed' => 0, 'failed' => 0], app(BillingRecurringProcessor::class)->processDue());
+        self::assertSame(1, \DB::table('billing_invoices')->where('tenant_id', $tenant->getKey())->count());
     }
 
     /** @return array{Tenant, User, TenantMembership} */

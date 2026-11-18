@@ -49,3 +49,13 @@ Two additive migration files are included: lifecycle schema and permission backf
 **PHASE 17 â€” DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS**
 
 Missing implementation above is not categorized as QA pending. Broader QA remains outstanding independently.
+
+## 2026-11-18 continuation evidence
+
+Implemented since the earlier handoff: opt-in confirmed-enrollment fee assignment (assignment only, no automatic invoice/payment), bounded idempotent bulk invoice issuance, scheduled monthly/annual recurring plans with pause/resume/cancel and run history, compensating adjustment reversals, selected database notifications, own learner/verified-guardian statements with CSV export, staff statement CSV export, and outstanding-aging report buckets. Routes, schedule entry, additive migration, service, model, frontend interactions, and focused regressions are in the current worktree.
+
+Fresh checks: Phase 17 SQLite 9 tests / 266 assertions; CourseEnrollment 9 tests / 190 assertions; Phase 18 SQLite compatibility 6 tests / 140 assertions; focused PHPStan and Pint passed; changed PHP syntax passed; TypeScript, focused ESLint/Prettier and Vite build passed (706 modules); billing route inventory registered 48 routes; `git diff --check` passed. No MySQL or browser suite was run, and the additive migrations have not been applied to a persistent database.
+
+Still incomplete: proration and academic applicability policy, complete installment/notification administration and retries, the broader reports (including record drill-down and PDF), and product-owned late-fee/term cadence definitions. A recurring plan whose original operator loses membership/permission safely fails and remains due; operator reassignment/recovery UX is not implemented. The Phase 18 test was a compatibility check only; Phase 18 source was not changed.
+
+Status: **PHASE 17 — DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS**. The code is not production-certified. MySQL migration/ownership verification, comprehensive authenticated browser/accessibility verification, and scanner/EICAR integration remain pending.

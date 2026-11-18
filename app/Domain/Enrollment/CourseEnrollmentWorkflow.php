@@ -3,6 +3,7 @@
 namespace App\Domain\Enrollment;
 
 use App\Domain\Audit\AuditRecorder;
+use App\Domain\Billing\BillingEnrollmentAssessment;
 use App\Domain\Tenancy\TenantContext;
 use App\Models\AcademicCourse;
 use App\Models\AcademicCourseVersion;
@@ -36,6 +37,7 @@ final class CourseEnrollmentWorkflow
         private readonly TenantContext $context,
         private readonly AuditRecorder $audit,
         private readonly WaitlistNotificationOutbox $waitlistOutbox,
+        private readonly BillingEnrollmentAssessment $billingAssessment,
     ) {}
 
     /** @param array<string, mixed> $data */
@@ -349,6 +351,7 @@ final class CourseEnrollmentWorkflow
             $this->recordEvent($enrollment, 'registration_requested', $previousStatus, $status, $actor, null, ['section_id' => (int) $section->getKey()]);
             if ($status === 'confirmed') {
                 $this->syncLearningAccess($enrollment, $actor, true);
+                $this->billingAssessment->assignConfiguredEnrollmentFee($enrollment, $actor);
             }
 
             return $enrollment;
@@ -455,6 +458,7 @@ final class CourseEnrollmentWorkflow
             $this->recordEvent($enrollment, 'registrar_decision', 'pending', $decision === 'approve' ? 'confirmed' : 'rejected', $actor, $reason);
             if ($decision === 'approve') {
                 $this->syncLearningAccess($enrollment, $actor, true);
+                $this->billingAssessment->assignConfiguredEnrollmentFee($enrollment, $actor);
             }
             $this->audit->record('enrollment.registration.'.$decision.'d', $actor, (int) $this->context->tenant()->getKey(), $enrollment, ['section_id' => $section->getKey()]);
 
@@ -739,6 +743,7 @@ final class CourseEnrollmentWorkflow
                 $this->recordEvent($enrollment, 'bulk_registration', null, $status, $actor, null, ['batch_id' => $batchId]);
                 if ($status === 'confirmed') {
                     $this->syncLearningAccess($enrollment, $actor, true);
+                    $this->billingAssessment->assignConfiguredEnrollmentFee($enrollment, $actor);
                 }
                 DB::table('course_enrollment_batch_rows')->where('id', $row->id)->update(['status' => 'imported', 'enrollment_id' => $enrollment->getKey(), 'updated_at' => now()]);
                 $imported++;
@@ -872,6 +877,7 @@ final class CourseEnrollmentWorkflow
             $enrollment->update(['status' => 'confirmed', 'confirmed_at' => now()]);
             $this->recordEvent($enrollment, 'waitlist_accepted', $from, 'confirmed', $actor, null, ['section_id' => (int) $entry->section_id]);
             $this->syncLearningAccess($enrollment, $actor, true);
+            $this->billingAssessment->assignConfiguredEnrollmentFee($enrollment, $actor);
             $this->audit->record('enrollment.waitlist.offer_accepted', $actor, (int) $this->context->tenant()->getKey(), $enrollment, ['section_id' => $entry->section_id]);
 
             return $enrollment->refresh();

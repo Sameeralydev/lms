@@ -5,6 +5,7 @@ namespace App\Domain\Billing;
 use App\Models\BillingInvoice;
 use App\Models\TenantMembership;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 
 /** Tenant and campus scoped invoice reporting shared by the UI and export. */
 final class BillingInvoiceReport
@@ -59,6 +60,31 @@ final class BillingInvoiceReport
             'outstanding_total' => self::decimal((string) $row->outstanding_total),
             'overdue_total' => self::decimal((string) $row->overdue_total),
         ];
+    }
+
+    /** @param array{from?:string|null,to?:string|null,status?:string|null,campus_id?:int|null,search?:string|null} $filters
+     * @return list<array{currency:string,current:string,days_1_30:string,days_31_60:string,days_61_90:string,days_over_90:string}>
+     */
+    public function agingSummary(TenantMembership $membership, array $filters): array
+    {
+        $totals = [];
+        $this->query($membership, [...$filters, 'status' => null])->where('status', '<>', 'cancelled')->where('outstanding_amount', '>', 0)
+            ->orderBy('id')->chunkById(500, function ($invoices) use (&$totals): void {
+                foreach ($invoices as $invoice) {
+                    $currency = (string) $invoice->currency;
+                    $totals[$currency] ??= ['current' => 0, 'days_1_30' => 0, 'days_31_60' => 0, 'days_61_90' => 0, 'days_over_90' => 0];
+                    $due = Carbon::parse($invoice->due_on)->startOfDay();
+                    $age = $due->lessThan(now()->startOfDay()) ? (int) $due->diffInDays(now()->startOfDay()) : -1;
+                    $bucket = $age < 0 ? 'current' : ($age <= 30 ? 'days_1_30' : ($age <= 60 ? 'days_31_60' : ($age <= 90 ? 'days_61_90' : 'days_over_90')));
+                    $totals[$currency][$bucket] += BillingMoney::toMinor((string) $invoice->outstanding_amount);
+                }
+            });
+
+        return collect($totals)->map(static fn (array $amounts, string $currency): array => [
+            'currency' => $currency, 'current' => BillingMoney::fromMinor($amounts['current']),
+            'days_1_30' => BillingMoney::fromMinor($amounts['days_1_30']), 'days_31_60' => BillingMoney::fromMinor($amounts['days_31_60']),
+            'days_61_90' => BillingMoney::fromMinor($amounts['days_61_90']), 'days_over_90' => BillingMoney::fromMinor($amounts['days_over_90']),
+        ])->values()->all();
     }
 
     private static function decimal(string $value): string

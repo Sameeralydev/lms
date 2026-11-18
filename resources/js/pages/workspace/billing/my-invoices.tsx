@@ -5,6 +5,7 @@ import { WorkspaceLayout } from '@/layouts/workspace-layout';
 
 type Invoice = {
     id: number;
+    student_id: number;
     invoice_number: string;
     student_number: string | null;
     student_name: string;
@@ -62,6 +63,7 @@ export default function MyBilling({
                                     <th className="p-3">Total</th>
                                     <th className="p-3">Outstanding</th>
                                     <th className="p-3">Status</th>
+                                    <th className="p-3">Statement</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-border divide-y">
@@ -89,6 +91,14 @@ export default function MyBilling({
                                             {invoice.currency} {invoice.outstanding_amount}
                                         </td>
                                         <td className="p-3 capitalize">{invoice.status}</td>
+                                        <td className="p-3">
+                                            <Link
+                                                className="text-brand underline"
+                                                href={`/t/${tenant.slug}/billing/my-ledger/${invoice.student_id}`}
+                                            >
+                                                Statement
+                                            </Link>
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>

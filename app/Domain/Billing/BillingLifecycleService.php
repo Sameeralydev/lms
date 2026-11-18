@@ -13,10 +13,14 @@ use App\Models\BillingFeeStructure;
 use App\Models\BillingInstallment;
 use App\Models\BillingInstallmentPlan;
 use App\Models\BillingInvoice;
+use App\Models\BillingRecurringPlan;
 use App\Models\CourseEnrollment;
 use App\Models\SisStudent;
+use App\Models\SisStudentGuardian;
 use App\Models\TenantMembership;
+use App\Models\TenantSetting;
 use App\Models\User;
+use App\Notifications\BillingActivityNotification;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -131,6 +135,7 @@ final class BillingLifecycleService
             $row->forceFill(['status' => $approve ? 'approved' : 'rejected', 'reviewed_by' => $actor->getKey(), 'reviewed_at' => now(), 'review_note' => trim($note)])->save();
             $this->concessionEvent($row, $actor, $row->status, null, ['note' => mb_substr(trim($note), 0, 500)]);
             $this->audit->record('billing.concession.'.$row->status, $actor, (int) $membership->tenant_id, $row, ['student_id' => (int) $row->student_id]);
+            $this->notifyStudent((int) $row->student_id, 'billing.concession.'.$row->status, 'A financial support request was '.$row->status.'.', ['concession_code' => (string) $row->code]);
 
             return $row;
         }, 3);
@@ -214,6 +219,7 @@ final class BillingLifecycleService
             }
             $plan->forceFill(['status' => 'published', 'published_by' => $actor->getKey(), 'published_at' => now()])->save();
             $this->audit->record('billing.installment_plan.published', $actor, (int) $membership->tenant_id, $plan, ['invoice_id' => (int) $plan->invoice_id, 'count' => (int) $plan->installment_count]);
+            $this->notifyInvoiceStudent($plan->invoice, 'billing.installments.published', 'An installment schedule is available.', ['installment_count' => (int) $plan->installment_count]);
 
             return $plan;
         }, 3);
@@ -299,11 +305,135 @@ final class BillingLifecycleService
             $outstanding = $nextTotal - $paid;
             $invoice->forceFill(['adjusted_total' => BillingMoney::fromMinor($nextTotal), 'outstanding_amount' => BillingMoney::fromMinor($outstanding), 'status' => $outstanding === 0 ? 'paid' : ($paid > 0 ? 'partially_paid' : 'issued')])->save();
             $row->forceFill(['status' => 'posted', 'posted_at' => now()])->save();
+            if ($row->reverses_adjustment_id !== null) {
+                $original = BillingAdjustment::query()->lockForUpdate()->findOrFail($row->reverses_adjustment_id);
+                if ($original->status !== 'posted') {
+                    throw new ConflictHttpException('The original adjustment is no longer posted; reversal was not applied.');
+                }
+                $original->forceFill(['status' => 'reversed'])->save();
+                $this->adjustmentEvent($original, $actor, 'reversed', ['reversal_adjustment_id' => (int) $row->getKey()]);
+                $this->audit->record('billing.adjustment.reversed', $actor, (int) $membership->tenant_id, $original, ['reversal_adjustment_id' => (int) $row->getKey()]);
+            }
             $this->adjustmentEvent($row, $actor, 'posted', ['adjusted_total' => BillingMoney::fromMinor($nextTotal), 'outstanding' => BillingMoney::fromMinor($outstanding)]);
             $this->audit->record('billing.adjustment.posted', $actor, (int) $membership->tenant_id, $row, ['invoice_id' => (int) $invoice->getKey(), 'kind' => $row->kind, 'amount' => (string) $row->amount]);
+            $this->notifyInvoiceStudent($invoice, $row->reverses_adjustment_id === null ? 'billing.adjustment.posted' : 'billing.adjustment.reversed', 'A reviewed invoice balance adjustment was posted.', ['adjustment_number' => (string) $row->adjustment_number]);
 
             return $row;
         }, 3);
+    }
+
+    public function requestAdjustmentReversal(int $id, string $reason, string $idempotencyKey, User $actor): BillingAdjustment
+    {
+        $membership = $this->context->membership();
+        abort_unless($membership->hasPermission('billing.adjustments.manage'), 403);
+        if (trim($reason) === '') {
+            throw ValidationException::withMessages(['reason' => 'A reversal reason is required.']);
+        }
+
+        return DB::transaction(function () use ($id, $reason, $idempotencyKey, $actor, $membership): BillingAdjustment {
+            $original = BillingAdjustment::query()->with('invoice')->lockForUpdate()->findOrFail($id);
+            $this->assertFinancialScope($original->invoice->institution_id, $original->invoice->campus_id, $membership);
+            if ($original->status !== 'posted' || $original->reverses_adjustment_id !== null || (int) $original->requested_by === (int) $actor->getKey()) {
+                throw new ConflictHttpException('Only another authorized operator may request reversal of a posted adjustment.');
+            }
+            $existing = BillingAdjustment::query()->where('reverses_adjustment_id', $original->getKey())->first();
+            if ($existing !== null) {
+                return $existing;
+            }
+            $reversal = BillingAdjustment::query()->create([
+                'invoice_id' => $original->invoice_id,
+                'reverses_adjustment_id' => $original->getKey(),
+                'adjustment_number' => 'REV-'.now()->format('Ymd').'-'.Str::upper(Str::random(8)),
+                'idempotency_key' => $idempotencyKey, 'kind' => $original->kind === 'credit' ? 'debit' : 'credit',
+                'amount' => $original->amount, 'currency' => $original->currency, 'status' => 'pending_approval',
+                'reason' => 'Reversal of '.$original->adjustment_number.': '.trim($reason), 'requested_by' => $actor->getKey(),
+            ]);
+            $this->adjustmentEvent($reversal, $actor, 'reversal_requested', ['original_adjustment_id' => (int) $original->getKey(), 'reason' => mb_substr(trim($reason), 0, 500)]);
+            $this->audit->record('billing.adjustment.reversal_requested', $actor, (int) $membership->tenant_id, $reversal, ['original_adjustment_id' => (int) $original->getKey()]);
+
+            return $reversal;
+        }, 3);
+    }
+
+    /** @param array{student_id:int,fee_structure_id:int,frequency:string,period_start:string,period_end:string,due_days_after_period:int,timezone:string} $data */
+    public function createRecurringPlan(array $data, User $actor): BillingRecurringPlan
+    {
+        $membership = $this->context->membership();
+        abort_unless($membership->hasPermission('billing.assignments.manage') && $membership->hasPermission('billing.invoices.issue'), 403);
+        if (! in_array($data['frequency'], ['monthly', 'annual'], true) || ! in_array($data['timezone'], timezone_identifiers_list(), true)) {
+            throw ValidationException::withMessages(['frequency' => 'Choose a supported billing frequency and valid institution timezone.']);
+        }
+
+        return DB::transaction(function () use ($data, $actor, $membership): BillingRecurringPlan {
+            $student = SisStudent::query()->lockForUpdate()->findOrFail($data['student_id']);
+            $this->assertStudentScope($student, $membership);
+            $structure = BillingFeeStructure::query()->lockForUpdate()->findOrFail($data['fee_structure_id']);
+            if ($structure->status !== 'active' || (int) $structure->institution_id !== (int) $student->institution_id
+                || ($structure->campus_id !== null && (int) $structure->campus_id !== (int) $student->home_campus_id)
+                || ! in_array($structure->frequency, ['monthly', 'annual'], true)) {
+                throw ValidationException::withMessages(['fee_structure_id' => 'Choose an active recurring fee structure for this learner.']);
+            }
+            $start = Carbon::parse($data['period_start'])->startOfDay();
+            $end = Carbon::parse($data['period_end'])->startOfDay();
+            $expectedMonths = ['monthly' => 1, 'annual' => 12][$data['frequency']];
+            if ($end->lt($start) || $end->toDateString() !== $start->copy()->addMonthsNoOverflow($expectedMonths)->subDay()->toDateString()
+                || $data['frequency'] !== $structure->frequency || $data['due_days_after_period'] > 90) {
+                throw ValidationException::withMessages(['period_end' => 'The initial period must match the selected structure frequency; due-day offset is limited to 90 days.']);
+            }
+            $exists = BillingRecurringPlan::query()->where('student_id', $student->getKey())->where('fee_structure_id', $structure->getKey())
+                ->where('period_start', $start->toDateString())->where('period_end', $end->toDateString())->exists();
+            if ($exists) {
+                throw ValidationException::withMessages(['period_start' => 'A recurring plan already covers this learner and period.']);
+            }
+            $nextRunAt = Carbon::parse($end->toDateString(), $data['timezone'])->addDays((int) $data['due_days_after_period'])->startOfDay()->utc();
+            $plan = BillingRecurringPlan::query()->create([
+                'institution_id' => $student->institution_id, 'campus_id' => $student->home_campus_id, 'student_id' => $student->getKey(),
+                'fee_structure_id' => $structure->getKey(), 'frequency' => $data['frequency'], 'period_start' => $start->toDateString(),
+                'period_end' => $end->toDateString(), 'due_days_after_period' => $data['due_days_after_period'], 'timezone' => $data['timezone'],
+                'next_run_at' => $nextRunAt, 'status' => 'active', 'created_by' => $actor->getKey(),
+            ]);
+            $this->audit->record('billing.recurring_plan.created', $actor, (int) $membership->tenant_id, $plan, ['student_id' => (int) $student->getKey(), 'frequency' => $plan->frequency]);
+
+            return $plan;
+        }, 3);
+    }
+
+    public function setRecurringPlanStatus(int $id, string $status, User $actor): BillingRecurringPlan
+    {
+        $membership = $this->context->membership();
+        abort_unless($membership->hasPermission('billing.assignments.manage'), 403);
+        if (! in_array($status, ['active', 'paused', 'cancelled'], true)) {
+            throw ValidationException::withMessages(['status' => 'Invalid recurring-plan state.']);
+        }
+
+        return DB::transaction(function () use ($id, $status, $actor, $membership): BillingRecurringPlan {
+            $plan = BillingRecurringPlan::query()->lockForUpdate()->findOrFail($id);
+            $this->assertFinancialScope($plan->institution_id, $plan->campus_id, $membership);
+            if ($plan->status === 'cancelled' || ($status === 'cancelled' && $plan->status === 'cancelled')) {
+                throw new ConflictHttpException('A cancelled recurring plan is terminal.');
+            }
+            $plan->forceFill(['status' => $status])->save();
+            $this->audit->record('billing.recurring_plan.'.$status, $actor, (int) $membership->tenant_id, $plan, []);
+
+            return $plan;
+        }, 3);
+    }
+
+    public function configureEnrollmentFeeAssessment(?int $feeStructureId, User $actor): void
+    {
+        $membership = $this->context->membership();
+        abort_unless($membership->hasPermission('billing.assignments.manage'), 403);
+        if ($feeStructureId !== null) {
+            $structure = BillingFeeStructure::query()->findOrFail($feeStructureId);
+            if ($structure->status !== 'active' || $structure->frequency !== 'one_time' || (int) $structure->institution_id !== (int) $membership->institution_id
+                || ($membership->campus_id !== null && $structure->campus_id !== null && (int) $structure->campus_id !== (int) $membership->campus_id)) {
+                throw ValidationException::withMessages(['fee_structure_id' => 'Enrollment assessment requires an active one-time structure in the authorized institution/campus.']);
+            }
+            TenantSetting::query()->updateOrCreate(['key' => 'billing.enrollment_fee_assessment'], ['tenant_id' => $membership->tenant_id, 'value' => ['fee_structure_id' => $feeStructureId]]);
+        } else {
+            TenantSetting::query()->where('key', 'billing.enrollment_fee_assessment')->delete();
+        }
+        $this->audit->record('billing.enrollment_assessment.configuration_updated', $actor, (int) $membership->tenant_id, null, ['enabled' => $feeStructureId !== null, 'fee_structure_id' => $feeStructureId]);
     }
 
     private function assertStudentScope(SisStudent $student, TenantMembership $membership): void
@@ -320,6 +450,25 @@ final class BillingLifecycleService
         if ($institutionId !== (int) $membership->institution_id || ($membership->campus_id !== null && $campusId !== (int) $membership->campus_id)) {
             abort(404);
         }
+    }
+
+    /** @param array<string, int|string|null> $details */
+    private function notifyStudent(int $studentId, string $event, string $message, array $details): void
+    {
+        $student = SisStudent::query()->with('user')->findOrFail($studentId);
+        $recipients = collect([$student->user])->filter()->merge(
+            SisStudentGuardian::query()->where('student_id', $studentId)->where('authority_status', 'verified')
+                ->where('can_view_financial_records', true)->whereNull('revoked_at')->with('guardian')->get()->pluck('guardian'),
+        )->filter()->unique(fn (User $recipient): int => (int) $recipient->getKey());
+        foreach ($recipients as $recipient) {
+            $recipient->notify(new BillingActivityNotification($event, $message, [...$details, 'tenant_slug' => (string) $this->context->tenant()->slug]));
+        }
+    }
+
+    /** @param array<string, int|string|null> $details */
+    private function notifyInvoiceStudent(BillingInvoice $invoice, string $event, string $message, array $details): void
+    {
+        $this->notifyStudent((int) $invoice->student_id, $event, $message, [...$details, 'invoice_number' => (string) $invoice->invoice_number]);
     }
 
     /** @param array<string, mixed> $metadata */

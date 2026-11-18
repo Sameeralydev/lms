@@ -121,12 +121,15 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/', fn (Tenant $tenant) => redirect()->route('tenant.dashboard', $tenant))->name('home');
         Route::get('/dashboard', WorkspaceDashboardController::class)->name('dashboard');
         Route::get('/billing/my', [BillingController::class, 'myInvoices'])->middleware('tenant.permission:billing.portal.view-own')->name('billing.my');
+        Route::get('/billing/my-ledger/{studentId}.csv', [BillingLifecycleController::class, 'exportLedger'])->whereNumber('studentId')->defaults('own', true)->middleware('tenant.permission:billing.ledger.view-own')->name('billing.my.ledger.csv');
+        Route::get('/billing/my-ledger/{studentId}', [BillingLifecycleController::class, 'ownLedger'])->whereNumber('studentId')->middleware('tenant.permission:billing.ledger.view-own')->name('billing.my.ledger');
         Route::get('/billing/my/{invoiceId}', [BillingController::class, 'showMyInvoice'])->middleware('tenant.permission:billing.portal.view-own')->whereNumber('invoiceId')->name('billing.my.show');
         Route::get('/billing/my/{invoiceId}/print', [BillingController::class, 'printMyInvoice'])->middleware('tenant.permission:billing.portal.view-own')->whereNumber('invoiceId')->name('billing.my.print');
         Route::get('/billing/my/payments/{paymentId}/receipt', [BillingPaymentController::class, 'myReceipt'])->middleware('tenant.permission:billing.portal.view-own')->whereNumber('paymentId')->name('billing.my.payments.receipt');
         Route::prefix('billing')->name('billing.')->middleware('tenant.permission:billing.view')->group(function (): void {
             Route::get('/', [BillingController::class, 'index'])->name('index');
             Route::get('/lifecycle', [BillingLifecycleController::class, 'index'])->name('lifecycle');
+            Route::get('/ledger/{studentId}.csv', [BillingLifecycleController::class, 'exportLedger'])->whereNumber('studentId')->middleware('tenant.permission:billing.ledger.view')->name('ledger.csv');
             Route::get('/ledger/{studentId}', [BillingLifecycleController::class, 'ledger'])->whereNumber('studentId')->middleware('tenant.permission:billing.ledger.view')->name('ledger');
             Route::post('/assignments', [BillingLifecycleController::class, 'storeAssignment'])->middleware('tenant.permission:billing.assignments.manage')->name('assignments.store');
             Route::post('/concessions', [BillingLifecycleController::class, 'storeConcession'])->middleware('tenant.permission:billing.concessions.manage')->name('concessions.store');
@@ -137,6 +140,7 @@ Route::middleware('auth')->group(function (): void {
             Route::post('/adjustments', [BillingLifecycleController::class, 'storeAdjustment'])->middleware('tenant.permission:billing.adjustments.manage')->name('adjustments.store');
             Route::post('/adjustments/{adjustmentId}/review', [BillingLifecycleController::class, 'reviewAdjustment'])->whereNumber('adjustmentId')->middleware('tenant.permission:billing.adjustments.approve')->name('adjustments.review');
             Route::post('/adjustments/{adjustmentId}/post', [BillingLifecycleController::class, 'postAdjustment'])->whereNumber('adjustmentId')->middleware('tenant.permission:billing.adjustments.post')->name('adjustments.post');
+            Route::post('/adjustments/{adjustmentId}/reverse', [BillingLifecycleController::class, 'reverseAdjustment'])->whereNumber('adjustmentId')->middleware('tenant.permission:billing.adjustments.manage')->name('adjustments.reverse');
             Route::get('/reports', [BillingController::class, 'reports'])->middleware('tenant.permission:billing.reports.view')->name('reports');
             Route::get('/reports.csv', [BillingController::class, 'exportReports'])->middleware('tenant.permission:billing.reports.view')->name('reports.csv');
             Route::post('/fee-heads', [BillingController::class, 'storeFeeHead'])->middleware('tenant.permission:billing.fees.manage')->name('fee-heads.store');
@@ -146,6 +150,10 @@ Route::middleware('auth')->group(function (): void {
             Route::post('/structures/{structureId}/activate', [BillingController::class, 'publishStructure'])->middleware('tenant.permission:billing.fees.manage')->whereNumber('structureId')->name('structures.activate');
             Route::get('/invoices', [BillingController::class, 'index'])->middleware('tenant.permission:billing.invoices.view')->name('invoices.index');
             Route::post('/invoices', [BillingController::class, 'issueInvoice'])->middleware('tenant.permission:billing.invoices.issue')->name('invoices.store');
+            Route::post('/invoices/bulk', [BillingLifecycleController::class, 'bulkIssue'])->middleware('tenant.permission:billing.invoices.issue')->name('invoices.bulk');
+            Route::post('/recurring-plans', [BillingLifecycleController::class, 'storeRecurringPlan'])->middleware(['tenant.permission:billing.assignments.manage', 'tenant.permission:billing.invoices.issue'])->name('recurring.store');
+            Route::put('/enrollment-assessment', [BillingLifecycleController::class, 'configureEnrollmentAssessment'])->middleware('tenant.permission:billing.assignments.manage')->name('enrollment-assessment.update');
+            Route::patch('/recurring-plans/{planId}/status', [BillingLifecycleController::class, 'recurringPlanStatus'])->whereNumber('planId')->middleware('tenant.permission:billing.assignments.manage')->name('recurring.status');
             Route::get('/invoices/{invoiceId}', [BillingController::class, 'showInvoice'])->middleware('tenant.permission:billing.invoices.view')->whereNumber('invoiceId')->name('invoices.show');
             Route::get('/invoices/{invoiceId}/print', [BillingController::class, 'printInvoice'])->middleware('tenant.permission:billing.invoices.view')->whereNumber('invoiceId')->name('invoices.print');
             Route::post('/invoices/{invoiceId}/cancel', [BillingController::class, 'cancelInvoice'])->middleware('tenant.permission:billing.invoices.cancel')->whereNumber('invoiceId')->name('invoices.cancel');

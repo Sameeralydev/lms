@@ -45,3 +45,15 @@ These QA entries do not defer missing implementation work. Phase 17 concessions,
 | Full regression and external notifications | Full product SQLite/Chromium regression, email/SMS delivery, performance and security campaign | Development-first policy; no external credentials or broad campaign were used in this continuation. |
 
 Focused Phase 18 SQLite result on 2026-11-18: 6 tests / 134 assertions passed. This does not close the above pending verification or implementation items.
+
+## Phase 17 continuation — latest evidence and remaining QA
+
+**QA PENDING — EXTERNAL ENVIRONMENT**
+
+- Guarded Phase 17 MySQL identity/ownership preflight, migrations, postflight and integration execution were not run in this continuation. Do not apply the new additive migrations to a persistent database outside the reviewed guarded runner.
+- Full authenticated billing browser and responsive/accessibility journeys were not run. The Vite build and focused lint/type checks are not browser evidence.
+- ClamAV/EICAR was not run. Do not disable quarantine or infer Phase 17 scan coverage from other phases.
+- Full product regression was intentionally not run; only the focused Phase 17, enrollment, and Phase 18 compatibility suites ran.
+- External email/SMS delivery remains unverified; implemented notifications use Laravel's database channel only.
+
+Fresh test evidence: Phase 17 SQLite 9/266, course enrollment 9/190, and Phase 18 SQLite compatibility 6/140 all passed. Focused PHPStan, Pint, PHP syntax, TypeScript, ESLint, Prettier, production build, billing route registration and `git diff --check` passed. These results do not close the remaining functional and environmental work in the Phase 17 traceability report.

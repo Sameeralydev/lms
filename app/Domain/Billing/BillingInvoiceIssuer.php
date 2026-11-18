@@ -4,6 +4,7 @@ namespace App\Domain\Billing;
 
 use App\Domain\Audit\AuditRecorder;
 use App\Domain\Tenancy\TenantContext;
+use App\Models\BillingAdjustment;
 use App\Models\BillingConcession;
 use App\Models\BillingConcessionApplication;
 use App\Models\BillingFeeAssignment;
@@ -11,7 +12,9 @@ use App\Models\BillingFeeStructure;
 use App\Models\BillingInvoice;
 use App\Models\Institution;
 use App\Models\SisStudent;
+use App\Models\SisStudentGuardian;
 use App\Models\User;
+use App\Notifications\BillingActivityNotification;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -176,6 +179,16 @@ final class BillingInvoiceIssuer
                 'currency' => $invoice->currency,
                 'total' => $total,
             ]);
+            $recipients = collect([$student->user])->filter()->merge(
+                SisStudentGuardian::query()->where('student_id', $student->getKey())->where('authority_status', 'verified')
+                    ->where('can_view_financial_records', true)->whereNull('revoked_at')->with('guardian')->get()->pluck('guardian'),
+            )->filter()->unique(fn (User $recipient): int => (int) $recipient->getKey());
+            foreach ($recipients as $recipient) {
+                $recipient->notify(new BillingActivityNotification('billing.invoice.issued', 'A new fee invoice is available.', [
+                    'invoice_number' => (string) $invoice->invoice_number, 'amount_due' => (string) $invoice->outstanding_amount,
+                    'currency' => (string) $invoice->currency, 'due_on' => $invoice->due_on->toDateString(), 'tenant_slug' => (string) $membership->tenant->slug,
+                ]));
+            }
 
             return $invoice->load('items');
         }, 3);
@@ -188,7 +201,8 @@ final class BillingInvoiceIssuer
 
         return DB::transaction(function () use ($invoice, $actor, $reason, $membership): BillingInvoice {
             $locked = BillingInvoice::query()->lockForUpdate()->findOrFail($invoice->getKey());
-            if ($locked->status !== 'issued' || BillingMoney::toMinor((string) $locked->paid_amount) !== 0) {
+            if ($locked->status !== 'issued' || BillingMoney::toMinor((string) $locked->paid_amount) !== 0
+                || BillingAdjustment::query()->where('invoice_id', $locked->getKey())->whereIn('status', ['posted', 'reversed'])->exists()) {
                 throw ValidationException::withMessages(['invoice' => 'Only an unpaid issued invoice can be cancelled. Paid or adjusted history must be corrected through an approved compensating record.']);
             }
             $locked->forceFill(['status' => 'cancelled', 'outstanding_amount' => '0.00', 'cancellation_reason' => trim($reason), 'cancelled_at' => now(), 'cancelled_by' => $actor->getKey()])->save();

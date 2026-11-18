@@ -49,6 +49,15 @@ class CourseEnrollmentTest extends TestCase
         [$tenant, $owner, $studentA, $studentB, $period, $course] = $this->fixture();
         $base = "/t/{$tenant->slug}";
 
+        // Optional billing automation creates an enrollment-linked assessment only after
+        // the institution explicitly configures an eligible one-time structure.
+        $this->actingAs($owner)->post("{$base}/billing/fee-heads", ['code' => 'ENROLL-REG', 'name' => 'Enrollment registration', 'category' => 'registration'])->assertSessionHasNoErrors();
+        $billingHeadId = (int) \DB::table('billing_fee_heads')->where('tenant_id', $tenant->getKey())->value('id');
+        $this->actingAs($owner)->post("{$base}/billing/structures", ['code' => 'ENROLL-ONE-TIME', 'name' => 'Enrollment fee', 'currency' => 'USD', 'frequency' => 'one_time', 'effective_from' => now()->toDateString(), 'items' => [['fee_head_id' => $billingHeadId, 'unit_amount' => '15.00', 'quantity' => '1']]])->assertSessionHasNoErrors();
+        $billingStructureId = (int) \DB::table('billing_fee_structures')->where('tenant_id', $tenant->getKey())->value('id');
+        $this->actingAs($owner)->post("{$base}/billing/structures/{$billingStructureId}/activate")->assertSessionHasNoErrors();
+        $this->actingAs($owner)->put("{$base}/billing/enrollment-assessment", ['fee_structure_id' => $billingStructureId])->assertSessionHasNoErrors();
+
         $this->actingAs($owner)->post("{$base}/registrar/enrollment/policies", [
             'name' => 'Default registration', 'minimum_courses' => 0, 'maximum_courses' => 4,
             'maximum_credits' => '', 'requires_approval' => false, 'waitlist_enabled' => true, 'waitlist_offer_hours' => 48,
@@ -80,6 +89,11 @@ class CourseEnrollmentTest extends TestCase
         $this->actingAs($studentA)->post("{$base}/registration", ['section_id' => $section->getKey(), 'idempotency_key' => $keyA])->assertRedirect();
         $enrollmentA = CourseEnrollment::query()->where('offering_id', $offeringId)->where('student_id', $this->studentId($studentA))->firstOrFail();
         $this->assertSame('confirmed', $enrollmentA->status);
+        $this->assertDatabaseHas('billing_fee_assignments', [
+            'tenant_id' => $tenant->getKey(), 'student_id' => $enrollmentA->student_id, 'course_enrollment_id' => $enrollmentA->getKey(),
+            'fee_structure_id' => $billingStructureId, 'source' => 'enrollment', 'status' => 'assigned',
+        ]);
+        $this->assertSame(0, \DB::table('billing_invoices')->where('tenant_id', $tenant->getKey())->count(), 'Enrollment assessment records an assignment; invoice issuance remains an explicit finance action.');
         $this->assertSame(0, $section->fresh()->availableSeats());
         $this->actingAs($studentA)->post("{$base}/registration", ['section_id' => $section->getKey(), 'idempotency_key' => $keyA])->assertRedirect();
         $this->assertSame(1, CourseEnrollment::query()->where('offering_id', $offeringId)->count());

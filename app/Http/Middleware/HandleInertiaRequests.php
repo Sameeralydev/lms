@@ -32,6 +32,7 @@ class HandleInertiaRequests extends Middleware
                 'sisImportMapping' => fn () => $request->session()->get('sisImportMapping'),
                 'sisImportPreview' => fn () => $request->session()->get('sisImportPreview'),
                 'sisPlacementPreview' => fn () => $request->session()->get('sisPlacementPreview'),
+                'billingBulkFailedIds' => fn () => $request->session()->get('billing_bulk_failed_ids', []),
             ],
         ]);
     }

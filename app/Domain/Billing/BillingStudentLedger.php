@@ -9,6 +9,8 @@ use App\Models\BillingPayment;
 use App\Models\BillingPaymentAllocation;
 use App\Models\BillingPaymentRefundAllocation;
 use App\Models\SisStudent;
+use App\Models\SisStudentGuardian;
+use App\Models\User;
 use Illuminate\Support\Carbon;
 
 final class BillingStudentLedger
@@ -16,14 +18,21 @@ final class BillingStudentLedger
     public function __construct(private readonly TenantContext $context) {}
 
     /** @return array{student:array{id:int,number:string,name:string},currency_totals:list<array{currency:string,debit:string,credit:string,balance:string}>,entries:list<array<string,mixed>>} */
-    public function statement(int $studentId): array
+    public function statement(int $studentId, ?User $viewer = null): array
     {
         $membership = $this->context->membership();
-        abort_unless($membership->hasPermission('billing.ledger.view'), 403);
+        abort_unless($membership->hasPermission($viewer === null ? 'billing.ledger.view' : 'billing.ledger.view-own'), 403);
         $student = SisStudent::query()->findOrFail($studentId);
         if ((int) $student->institution_id !== (int) $membership->institution_id
             || ($membership->campus_id !== null && (int) $student->home_campus_id !== (int) $membership->campus_id)) {
             abort(404);
+        }
+        if ($viewer !== null) {
+            $isLearner = (int) $student->user_id === (int) $viewer->getKey();
+            $isAuthorizedGuardian = SisStudentGuardian::query()->where('student_id', $studentId)
+                ->where('guardian_user_id', $viewer->getKey())->where('authority_status', 'verified')
+                ->where('can_view_financial_records', true)->whereNull('revoked_at')->exists();
+            abort_unless($isLearner || $isAuthorizedGuardian, 404);
         }
 
         $entries = collect();
@@ -41,7 +50,7 @@ final class BillingStudentLedger
         foreach ($reversals as $reversal) {
             $entries->push($this->entry(Carbon::parse($reversal->reversed_at)->toIso8601String(), 'refund', $reversal->refund->refund_number, 'allocation_reversal', (string) $reversal->amount, '0.00', $reversal->invoice->currency, 'Refund reversed an invoice payment allocation'));
         }
-        $adjustments = BillingAdjustment::query()->with('invoice:id,student_id,currency')->where('status', 'posted')
+        $adjustments = BillingAdjustment::query()->with('invoice:id,student_id,currency')->whereIn('status', ['posted', 'reversed'])
             ->whereHas('invoice', fn ($query) => $query->where('student_id', $studentId))->orderBy('posted_at')->limit(10000)->get();
         foreach ($adjustments as $adjustment) {
             $credit = $adjustment->kind === 'credit';

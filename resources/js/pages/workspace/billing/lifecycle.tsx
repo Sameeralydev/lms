@@ -1,4 +1,4 @@
-import { Link, router, useForm } from '@inertiajs/react';
+import { Link, router, useForm, usePage } from '@inertiajs/react';
 import { PageHeader } from '@/components/ui/page-header';
 import { WorkspaceLayout } from '@/layouts/workspace-layout';
 
@@ -62,6 +62,8 @@ export default function BillingLifecycle({
     concessions,
     installment_plans,
     adjustments,
+    recurring_plans,
+    enrollment_assessment_structure_id,
     permissions,
 }: {
     tenant: { slug: string };
@@ -71,6 +73,7 @@ export default function BillingLifecycle({
         id: number;
         name: string;
         currency: string;
+        frequency: string;
         effective_from: string;
         effective_until: string | null;
     }[];
@@ -79,6 +82,17 @@ export default function BillingLifecycle({
     concessions: Concession[];
     installment_plans: InstallmentPlan[];
     adjustments: Adjustment[];
+    recurring_plans: {
+        id: number;
+        student: string;
+        structure: string;
+        frequency: string;
+        next_period_start: string;
+        next_period_end: string;
+        next_run_at: string;
+        status: string;
+    }[];
+    enrollment_assessment_structure_id: number | null;
     permissions: {
         assign: boolean;
         concession_request: boolean;
@@ -88,9 +102,12 @@ export default function BillingLifecycle({
         adjustment_review: boolean;
         adjustment_post: boolean;
         ledger: boolean;
+        issue: boolean;
+        recurring: boolean;
     };
 }) {
     const base = `/t/${tenant.slug}/billing`;
+    const flash = (usePage().props as { flash?: { billingBulkFailedIds?: number[] } }).flash;
     const assignment = useForm({
         student_id: '',
         fee_structure_id: '',
@@ -125,6 +142,25 @@ export default function BillingLifecycle({
         idempotency_key: crypto.randomUUID(),
         reason: '',
     });
+    const bulkInvoice = useForm({
+        student_ids: [] as string[],
+        fee_structure_id: '',
+        period_start: '',
+        period_end: '',
+        due_on: '',
+    });
+    const recurring = useForm({
+        student_id: '',
+        fee_structure_id: '',
+        frequency: 'monthly',
+        period_start: '',
+        period_end: '',
+        due_days_after_period: '0',
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    });
+    const enrollmentAssessment = useForm({
+        fee_structure_id: enrollment_assessment_structure_id?.toString() ?? '',
+    });
 
     return (
         <WorkspaceLayout area="tenant" title="Billing lifecycle">
@@ -140,6 +176,335 @@ export default function BillingLifecycle({
                     </Link>
                 }
             />
+            {permissions.issue && (
+                <section className="bg-surface border-border mb-5 rounded-2xl border p-5">
+                    <h2 className="text-text-primary text-lg font-semibold">Issue invoices in bulk</h2>
+                    <p className="text-text-secondary mt-1 text-sm">
+                        Each learner is processed independently with an idempotency key tied to the fee
+                        structure and billing period.
+                    </p>
+                    {(flash?.billingBulkFailedIds?.length ?? 0) > 0 && (
+                        <p className="mt-2 rounded-lg border border-red-500 p-3 text-sm" role="alert">
+                            Invoice generation needs review for learner IDs:{' '}
+                            {flash?.billingBulkFailedIds?.join(', ')}.
+                        </p>
+                    )}
+                    <form
+                        className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            bulkInvoice.post(`${base}/invoices/bulk`);
+                        }}
+                    >
+                        <label className="text-text-secondary text-sm">
+                            Fee structure
+                            <select
+                                required
+                                className={field}
+                                value={bulkInvoice.data.fee_structure_id}
+                                onChange={(e) => bulkInvoice.setData('fee_structure_id', e.target.value)}
+                            >
+                                <option value="">Select structure</option>
+                                {structures.map((item) => (
+                                    <option key={item.id} value={item.id}>
+                                        {item.name} ({item.currency})
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Period starts
+                            <input
+                                required
+                                type="date"
+                                className={field}
+                                value={bulkInvoice.data.period_start}
+                                onChange={(e) => bulkInvoice.setData('period_start', e.target.value)}
+                            />
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Period ends
+                            <input
+                                required
+                                type="date"
+                                className={field}
+                                value={bulkInvoice.data.period_end}
+                                onChange={(e) => bulkInvoice.setData('period_end', e.target.value)}
+                            />
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Due on
+                            <input
+                                required
+                                type="date"
+                                className={field}
+                                value={bulkInvoice.data.due_on}
+                                onChange={(e) => bulkInvoice.setData('due_on', e.target.value)}
+                            />
+                        </label>
+                        <div className="flex items-end">
+                            <button
+                                disabled={bulkInvoice.processing || bulkInvoice.data.student_ids.length === 0}
+                                className={button}
+                            >
+                                Issue {bulkInvoice.data.student_ids.length} invoice(s)
+                            </button>
+                        </div>
+                        <fieldset className="border-border max-h-48 overflow-y-auto rounded-lg border p-3 sm:col-span-2 lg:col-span-5">
+                            <legend className="text-text-secondary px-1 text-sm">Learners (up to 200)</legend>
+                            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                {students.map((student) => {
+                                    const selected = bulkInvoice.data.student_ids.includes(
+                                        String(student.id),
+                                    );
+                                    return (
+                                        <label
+                                            className="text-text-secondary flex items-center gap-2 text-sm"
+                                            key={student.id}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={selected}
+                                                disabled={
+                                                    !selected && bulkInvoice.data.student_ids.length >= 200
+                                                }
+                                                onChange={(e) =>
+                                                    bulkInvoice.setData(
+                                                        'student_ids',
+                                                        e.target.checked
+                                                            ? [
+                                                                  ...bulkInvoice.data.student_ids,
+                                                                  String(student.id),
+                                                              ]
+                                                            : bulkInvoice.data.student_ids.filter(
+                                                                  (id) => id !== String(student.id),
+                                                              ),
+                                                    )
+                                                }
+                                            />
+                                            {student.student_number} · {student.legal_first_name}{' '}
+                                            {student.legal_last_name}
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        </fieldset>
+                    </form>
+                </section>
+            )}
+            {permissions.recurring && (
+                <section className="bg-surface border-border mb-5 rounded-2xl border p-5">
+                    <h2 className="text-text-primary text-lg font-semibold">Enrollment billing policy</h2>
+                    <p className="text-text-secondary mt-1 text-sm">
+                        Optional. Confirmed enrollments create an idempotent one-time fee assignment only;
+                        staff still review and issue the invoice separately.
+                    </p>
+                    <form
+                        className="mt-3 flex flex-wrap items-end gap-3"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            enrollmentAssessment.put(`${base}/enrollment-assessment`);
+                        }}
+                    >
+                        <label className="text-text-secondary min-w-64 text-sm">
+                            Initial enrollment fee
+                            <select
+                                className={field}
+                                value={enrollmentAssessment.data.fee_structure_id}
+                                onChange={(e) =>
+                                    enrollmentAssessment.setData('fee_structure_id', e.target.value)
+                                }
+                            >
+                                <option value="">Disabled</option>
+                                {structures
+                                    .filter((s) => s.frequency === 'one_time')
+                                    .map((s) => (
+                                        <option key={s.id} value={s.id}>
+                                            {s.name} ({s.currency})
+                                        </option>
+                                    ))}
+                            </select>
+                        </label>
+                        <button className={button} disabled={enrollmentAssessment.processing}>
+                            Save setting
+                        </button>
+                    </form>
+                    <h2 className="text-text-primary mt-6 text-lg font-semibold">Recurring billing plans</h2>
+                    <h2 className="text-text-primary text-lg font-semibold">Recurring billing plans</h2>
+                    <p className="text-text-secondary mt-1 text-sm">
+                        Plans are explicit per learner and use the structure’s monthly or annual frequency.
+                        Term billing remains institution-calendar dependent and is not automated here.
+                    </p>
+                    <form
+                        className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            recurring.post(`${base}/recurring-plans`);
+                        }}
+                    >
+                        <label className="text-text-secondary text-sm">
+                            Learner
+                            <select
+                                required
+                                className={field}
+                                value={recurring.data.student_id}
+                                onChange={(e) => recurring.setData('student_id', e.target.value)}
+                            >
+                                <option value="">Select learner</option>
+                                {students.map((s) => (
+                                    <option key={s.id} value={s.id}>
+                                        {s.student_number} · {s.legal_first_name} {s.legal_last_name}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Fee structure
+                            <select
+                                required
+                                className={field}
+                                value={recurring.data.fee_structure_id}
+                                onChange={(e) => recurring.setData('fee_structure_id', e.target.value)}
+                            >
+                                <option value="">Select structure</option>
+                                {structures.map((s) => (
+                                    <option key={s.id} value={s.id}>
+                                        {s.name} ({s.frequency})
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Frequency
+                            <select
+                                className={field}
+                                value={recurring.data.frequency}
+                                onChange={(e) => recurring.setData('frequency', e.target.value)}
+                            >
+                                <option value="monthly">Monthly</option>
+                                <option value="annual">Annual</option>
+                            </select>
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Timezone
+                            <input
+                                required
+                                className={field}
+                                value={recurring.data.timezone}
+                                onChange={(e) => recurring.setData('timezone', e.target.value)}
+                            />
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            First period starts
+                            <input
+                                required
+                                type="date"
+                                className={field}
+                                value={recurring.data.period_start}
+                                onChange={(e) => recurring.setData('period_start', e.target.value)}
+                            />
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            First period ends
+                            <input
+                                required
+                                type="date"
+                                className={field}
+                                value={recurring.data.period_end}
+                                onChange={(e) => recurring.setData('period_end', e.target.value)}
+                            />
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Due days after period
+                            <input
+                                required
+                                min="0"
+                                max="90"
+                                type="number"
+                                className={field}
+                                value={recurring.data.due_days_after_period}
+                                onChange={(e) => recurring.setData('due_days_after_period', e.target.value)}
+                            />
+                        </label>
+                        <div className="flex items-end">
+                            <button className={button} disabled={recurring.processing}>
+                                Create plan
+                            </button>
+                        </div>
+                    </form>
+                    <div className="mt-4 overflow-x-auto">
+                        <table className="w-full min-w-[700px] text-left text-sm">
+                            <thead>
+                                <tr>
+                                    {[
+                                        'Learner',
+                                        'Structure',
+                                        'Frequency',
+                                        'Next period',
+                                        'Status',
+                                        'Action',
+                                    ].map((heading) => (
+                                        <th className="p-2" key={heading}>
+                                            {heading}
+                                        </th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {recurring_plans.map((plan) => (
+                                    <tr className="border-border border-t" key={plan.id}>
+                                        <td className="p-2">{plan.student}</td>
+                                        <td>{plan.structure}</td>
+                                        <td>{plan.frequency}</td>
+                                        <td>
+                                            {plan.next_period_start} – {plan.next_period_end}
+                                        </td>
+                                        <td>{plan.status}</td>
+                                        <td className="flex gap-2 py-2">
+                                            {plan.status !== 'cancelled' && (
+                                                <button
+                                                    className="border-border rounded border px-2 py-1"
+                                                    onClick={() =>
+                                                        router.patch(
+                                                            `${base}/recurring-plans/${plan.id}/status`,
+                                                            {
+                                                                status:
+                                                                    plan.status === 'active'
+                                                                        ? 'paused'
+                                                                        : 'active',
+                                                            },
+                                                        )
+                                                    }
+                                                >
+                                                    {plan.status === 'active' ? 'Pause' : 'Resume'}
+                                                </button>
+                                            )}
+                                            {plan.status !== 'cancelled' && (
+                                                <button
+                                                    className="border-border rounded border px-2 py-1"
+                                                    onClick={() => {
+                                                        if (
+                                                            window.confirm(
+                                                                'Cancel this recurring plan? Existing invoices are preserved.',
+                                                            )
+                                                        )
+                                                            router.patch(
+                                                                `${base}/recurring-plans/${plan.id}/status`,
+                                                                { status: 'cancelled' },
+                                                            );
+                                                    }}
+                                                >
+                                                    Cancel
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            )}
             <div className="grid gap-5 xl:grid-cols-2">
                 {permissions.assign && (
                     <section className="bg-surface border-border rounded-2xl border p-5">
@@ -722,6 +1087,23 @@ export default function BillingLifecycle({
                                                 }
                                             >
                                                 Post approved adjustment
+                                            </button>
+                                        )}
+                                        {permissions.adjustment_request && row.status === 'posted' && (
+                                            <button
+                                                className="border-border rounded border px-2 py-1"
+                                                onClick={() => {
+                                                    const reason = window.prompt(
+                                                        'Explain why this posted adjustment must be reversed.',
+                                                    );
+                                                    if (reason?.trim())
+                                                        router.post(`${base}/adjustments/${row.id}/reverse`, {
+                                                            reason: reason.trim(),
+                                                            idempotency_key: crypto.randomUUID(),
+                                                        });
+                                                }}
+                                            >
+                                                Request reversal
                                             </button>
                                         )}
                                     </td>

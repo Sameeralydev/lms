@@ -19,11 +19,13 @@ export default function BillingLedger({
     student,
     currency_totals,
     entries,
+    is_own_statement,
 }: {
     tenant: { slug: string };
     student: { id: number; number: string; name: string };
     currency_totals: { currency: string; debit: string; credit: string; balance: string }[];
     entries: LedgerEntry[];
+    is_own_statement: boolean;
 }) {
     return (
         <WorkspaceLayout area="tenant" title="Student financial ledger">
@@ -31,12 +33,28 @@ export default function BillingLedger({
                 title="Student financial ledger"
                 description={`${student.name} · ${student.number}. Charges, payment allocations, executed refund reversals, and posted adjustments in your authorized campus scope.`}
                 actions={
-                    <Link
-                        className="border-border rounded-lg border px-4 py-2"
-                        href={`/t/${tenant.slug}/billing/lifecycle`}
-                    >
-                        Billing lifecycle
-                    </Link>
+                    <div className="flex flex-wrap gap-2">
+                        <a
+                            className="border-border rounded-lg border px-4 py-2"
+                            href={`/t/${tenant.slug}/billing/${is_own_statement ? `my-ledger/${student.id}` : `ledger/${student.id}`}.csv`}
+                        >
+                            Export CSV
+                        </a>
+                        <button
+                            className="border-border rounded-lg border px-4 py-2"
+                            onClick={() => window.print()}
+                        >
+                            Print statement
+                        </button>
+                        {!is_own_statement && (
+                            <Link
+                                className="border-border rounded-lg border px-4 py-2"
+                                href={`/t/${tenant.slug}/billing/lifecycle`}
+                            >
+                                Billing lifecycle
+                            </Link>
+                        )}
+                    </div>
                 }
             />
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

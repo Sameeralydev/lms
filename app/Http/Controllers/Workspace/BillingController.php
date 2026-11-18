@@ -60,7 +60,7 @@ final class BillingController extends Controller
             'students' => SisStudent::query()->where('institution_id', $institution->getKey())->whereIn('status', ['pre_admitted', 'admitted', 'active', 'on_leave'])->whereNull('archived_at')->when($membership->campus_id !== null, fn ($query) => $query->where('home_campus_id', $membership->campus_id))->orderBy('student_number')->limit(500)->get(['id', 'student_number', 'legal_first_name', 'legal_last_name', 'home_campus_id']),
             'campuses' => Campus::query()->where('institution_id', $institution->getKey())->when($membership->campus_id !== null, fn ($query) => $query->whereKey($membership->campus_id))->orderBy('name')->get(['id', 'name']),
             'invoices' => $invoices->through(static fn (BillingInvoice $invoice): array => [
-                'id' => (int) $invoice->getKey(), 'invoice_number' => $invoice->invoice_number,
+                'id' => (int) $invoice->getKey(), 'student_id' => (int) $invoice->student_id, 'invoice_number' => $invoice->invoice_number,
                 'student_number' => $invoice->student->student_number,
                 'student_name' => trim($invoice->student->legal_first_name.' '.$invoice->student->legal_last_name),
                 'period_start' => $invoice->period_start->toDateString(), 'period_end' => $invoice->period_end->toDateString(),
@@ -133,6 +133,7 @@ final class BillingController extends Controller
             'tenant' => ['slug' => $tenant->slug],
             'filters' => $filters,
             'summary' => $reports->summary($membership, $filters),
+            'aging' => $reports->agingSummary($membership, $filters),
             'campuses' => Campus::query()->where('institution_id', $membership->institution_id)
                 ->when($membership->campus_id !== null, fn ($query) => $query->whereKey($membership->campus_id))
                 ->orderBy('name')->get(['id', 'name']),

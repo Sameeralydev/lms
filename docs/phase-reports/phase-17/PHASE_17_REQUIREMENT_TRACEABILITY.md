@@ -51,3 +51,30 @@ The billing migrations were exercised only through the isolated SQLite test runn
 ## Development status
 
 Phase 17 remains implementation-incomplete because multiple requirements above remain unimplemented or unverified. External/comprehensive tests listed in `docs/qa/DEFERRED_PRODUCT_QA_BACKLOG.md` are verification work only and do not convert missing functionality into QA deferrals.
+
+## 2026-11-18 continuation: billing delivery slices
+
+This continuation added functional billing paths while retaining the earlier reports above as historical evidence:
+
+- Enrollment assessment is now an opt-in tenant setting pointing to an active one-time fee structure. Confirmed enrollment, approval, waitlist acceptance, and confirmed bulk registration create an idempotent fee assignment only; they do not issue an invoice or collect money. Evidence: `BillingEnrollmentAssessment`, `CourseEnrollmentWorkflow`, and the enrollment feature assertion.
+- Bulk invoice issuance accepts at most 200 distinct learner IDs, calls the existing invoice issuer per learner with deterministic idempotency keys, preserves successful rows when another learner fails, and returns a bounded failed-ID list.
+- Recurring plans support explicit monthly/annual structures, dates, timezone, due offset, pause/resume/cancel, run history, failure recording, and scheduled idempotent generation. The processor only runs when the plan creator still has an active, scoped membership and invoice permission. There is no invented school-term cadence or late-fee policy.
+- Adjustment reversals use a pending compensating adjustment, independent review/posting, immutable event/audit history, a uniqueness constraint against duplicate reversal, and preservation of the original record. Invoices with posted adjustment history cannot be cancelled.
+- In-app database notifications now cover invoice issue and selected concession, installment, and adjustment events. Invoice issue notifications include only the learner and guardians whose financial authority is currently verified and not revoked.
+- Learners and currently authorized guardians can view an explicitly scoped statement and download CSV; staff exports are audited. The report page now includes outstanding aging buckets.
+- Recurring processing accepts either a tenant-wide membership or a campus-scoped membership matching the learner's campus. All changed PHP is checked by focused PHPStan/Pint and PHP syntax validation.
+
+Fresh focused evidence from this continuation:
+
+- `php tests/run.php --phase=17 --profile=sqlite --no-report` — PASS, 9 tests / 266 assertions.
+- `php artisan test --filter=CourseEnrollmentTest` — PASS, 9 tests / 190 assertions.
+- `php tests/run.php --phase=18 --profile=sqlite --no-report` — PASS, 6 tests / 140 assertions; Phase 18 sources were not changed.
+- Focused PHPStan — PASS, no errors; Pint — PASS; PHP syntax checks — PASS.
+- `npm.cmd run typecheck`, focused ESLint, focused Prettier, and `npm.cmd run build` — PASS (706 modules transformed).
+- `php artisan route:list --path=billing --except-vendor` — PASS, 48 billing routes registered. `git diff --check` — PASS.
+
+No MySQL preflight/migration or persistent database change, ClamAV/EICAR check, full browser suite, or broad product regression was run. Those items remain **QA PENDING — EXTERNAL ENVIRONMENT** where they require external infrastructure, and otherwise pending comprehensive QA. No claim of full Phase 17 completion is made.
+
+Remaining functional policy/product work includes transfer/withdrawal proration, academic/program applicability and installment amendments/reconciliation, wider billing report catalog and record drill-down/PDF, complete billing notification lifecycle/read history, staff recurring-plan recovery/ownership handoff, and product-approved late-fee/term-billing rules. The original approved Phase 17 source document is not present in the repository, so no requirement count is inferred beyond the user-provided specification and repository evidence.
+
+Current phase status: **PHASE 17 — DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS**.

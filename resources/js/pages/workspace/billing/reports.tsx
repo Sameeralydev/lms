@@ -21,6 +21,7 @@ export default function BillingReports({
     tenant,
     filters,
     summary,
+    aging,
     campuses,
     invoices,
     export_url,
@@ -41,6 +42,14 @@ export default function BillingReports({
         outstanding_total: string;
         overdue_total: string;
     };
+    aging: {
+        currency: string;
+        current: string;
+        days_1_30: string;
+        days_31_60: string;
+        days_61_90: string;
+        days_over_90: string;
+    }[];
     campuses: { id: number; name: string }[];
     invoices: { data: InvoiceRow[]; links: PageLink[] };
     export_url: string;
@@ -176,6 +185,49 @@ export default function BillingReports({
                 />
                 <MetricCard label="Overdue" value={summary.overdue_total} detail="Past-due open balance" />
             </div>
+            <section className="bg-surface border-border mt-5 overflow-x-auto rounded-2xl border p-4">
+                <h2 className="text-text-primary font-semibold">Outstanding balance aging</h2>
+                <p className="text-text-secondary mt-1 text-sm">
+                    Open invoice balances grouped by days past due, using the current date and selected
+                    institution/campus filters.
+                </p>
+                {aging.length === 0 ? (
+                    <p className="text-text-secondary mt-3 text-sm">
+                        No outstanding balances match these filters.
+                    </p>
+                ) : (
+                    <table className="mt-3 w-full min-w-[700px] text-left text-sm">
+                        <thead>
+                            <tr>
+                                {[
+                                    'Currency',
+                                    'Not yet due',
+                                    '1–30 days',
+                                    '31–60 days',
+                                    '61–90 days',
+                                    'Over 90 days',
+                                ].map((heading) => (
+                                    <th className="p-2" key={heading}>
+                                        {heading}
+                                    </th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {aging.map((row) => (
+                                <tr className="border-border border-t" key={row.currency}>
+                                    <td className="p-2">{row.currency}</td>
+                                    <td className="p-2">{row.current}</td>
+                                    <td className="p-2">{row.days_1_30}</td>
+                                    <td className="p-2">{row.days_31_60}</td>
+                                    <td className="p-2">{row.days_61_90}</td>
+                                    <td className="p-2">{row.days_over_90}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
+            </section>
             <section className="bg-surface border-border mt-5 overflow-hidden rounded-2xl border">
                 {invoices.data.length === 0 ? (
                     <div className="text-text-secondary p-8 text-center">
