@@ -98,6 +98,7 @@ const tenantNavigation = [
     ['Attendance operations', 'attendance', 'attendance.view'],
     ['My attendance', 'attendance/my', 'attendance.student.view'],
     ['Family attendance', 'attendance/guardian', 'attendance.guardian.view'],
+    ['Announcements', 'communications/announcements', 'communications.announcements.view'],
 ];
 
 export function WorkspaceLayout({ children, title, area }: WorkspaceLayoutProps) {

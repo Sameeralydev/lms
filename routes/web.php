@@ -31,6 +31,7 @@ use App\Http\Controllers\Workspace\AttendanceController;
 use App\Http\Controllers\Workspace\AuditController as WorkspaceAuditController;
 use App\Http\Controllers\Workspace\BrandingController;
 use App\Http\Controllers\Workspace\CampusController;
+use App\Http\Controllers\Workspace\CommunicationsAnnouncementController;
 use App\Http\Controllers\Workspace\CourseDeliveryAnalyticsController;
 use App\Http\Controllers\Workspace\CourseDeliveryController;
 use App\Http\Controllers\Workspace\CourseDeliveryLiveSessionController;
@@ -267,6 +268,12 @@ Route::middleware('auth')->group(function (): void {
         Route::prefix('assignment-notifications')->name('assignment-notifications.')->middleware('tenant.permission:assignments.view')->group(function (): void {
             Route::get('/', [AssignmentNotificationController::class, 'index'])->name('index');
             Route::post('/{notificationId}/read', [AssignmentNotificationController::class, 'markRead'])->whereNumber('notificationId')->name('read');
+        });
+        Route::prefix('communications/announcements')->name('communications.announcements.')->middleware('tenant.permission:communications.announcements.view')->group(function (): void {
+            Route::get('/', [CommunicationsAnnouncementController::class, 'index'])->name('index');
+            Route::post('/', [CommunicationsAnnouncementController::class, 'store'])->middleware('tenant.permission:communications.announcements.manage')->name('store');
+            Route::put('/{announcementId}', [CommunicationsAnnouncementController::class, 'update'])->middleware('tenant.permission:communications.announcements.manage')->whereNumber('announcementId')->name('update');
+            Route::post('/{announcementId}/read', [CommunicationsAnnouncementController::class, 'markRead'])->whereNumber('announcementId')->name('read');
         });
         Route::prefix('attendance')->name('attendance.')->group(function (): void {
             Route::get('/', [AttendanceController::class, 'index'])->middleware('tenant.permission:attendance.view')->name('index');

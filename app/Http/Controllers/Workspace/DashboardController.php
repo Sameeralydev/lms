@@ -88,6 +88,7 @@ class DashboardController extends Controller
         $addCard('attendance.view', 'Attendance operations', 'attendance', 'Registers, corrections, reports, and authorized review.');
         $addCard('attendance.student.view', 'My attendance', 'attendance/my', 'Your own attendance record and justifications.');
         $addCard('attendance.guardian.view', 'Family attendance', 'attendance/guardian', 'Attendance for verified learners linked to your account.');
+        $addCard('communications.announcements.view', 'Announcements', 'communications/announcements', 'Institution updates published for your roles and campus.');
         $addCard('audit.view', 'Audit history', 'audit', 'Administrative events available to your role.');
 
         $metrics = [];
