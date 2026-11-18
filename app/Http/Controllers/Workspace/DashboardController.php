@@ -124,6 +124,13 @@ class DashboardController extends Controller
         $addCard('exams.student.view-own', 'My examination schedule', 'examinations/my', 'View your own published examination schedule and governance status.');
         $addCard('exams.student.view-own', 'My examination results', 'examinations/results', 'View released results and request an eligible recheck.');
         $addCard('assessment.attempt.start', 'Available examinations', 'exams', 'Open eligible online assessments assigned to your learner account.');
+        if ($can('hr.staff.view')) {
+            $cards[] = ['label' => 'Staff management', 'href' => '/t/'.$tenant->slug.'/hr/staff', 'detail' => 'Employment records within your institution and campus scope.'];
+        } elseif ($can('hr.staff.view-own')) {
+            $cards[] = ['label' => 'My staff profile', 'href' => '/t/'.$tenant->slug.'/hr/staff', 'detail' => 'View your own employment record.'];
+        }
+        $addCard('communications.announcements.view', 'Announcements', 'communications/announcements', 'Institution updates published for your roles and campus.');
+        $addCard('communications.messages.view', 'Messages', 'communications/messages', 'Private conversations with active members in your institution scope.');
         $addCard('audit.view', 'Audit history', 'audit', 'Administrative events available to your role.');
 
         $configuration = AcademicConfiguration::query()->first();

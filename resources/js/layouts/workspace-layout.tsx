@@ -24,6 +24,7 @@ type SharedProps = {
         primaryColor: string;
         accentColor: string;
         logoUrl: string | null;
+        faviconUrl: string | null;
     };
     academicConfig: AcademicWorkspaceConfig | null;
     workspaces: { slug: string; name: string; status: string }[];
@@ -43,6 +44,8 @@ const themeOptions = [
 const platformNavigation = [
     ['Overview', '/platform/dashboard', 'platform.dashboard.view'],
     ['Institutions', '/platform/tenants', 'platform.tenants.view'],
+    ['Plans & entitlements', '/platform/plans', 'platform.plans.manage'],
+    ['Tenant plans', '/platform/subscriptions', 'platform.subscriptions.manage'],
     ['Operators', '/platform/operators', 'platform.operators.manage'],
     ['Audit history', '/platform/audit', 'platform.audit.view'],
     ['Operations', '/platform/settings', 'platform.dashboard.view'],
@@ -106,6 +109,13 @@ const tenantNavigation = [
     ['Attendance reports', 'attendance/reports', 'attendance.report.view'],
     ['My attendance', 'attendance/my', 'attendance.student.view'],
     ['Family attendance', 'attendance/guardian', 'attendance.guardian.view'],
+    ['Staff directory', 'hr/staff', 'hr.staff.view'],
+    ['HR attendance & leave', 'hr/operations', 'hr.staff.view-own'],
+    ['Library', 'library', 'library.view'],
+    ['Integrations', 'integrations', 'integrations.view'],
+    ['Announcements', 'communications/announcements', 'communications.announcements.view'],
+    ['Messages', 'communications/messages', 'communications.messages.view'],
+    ['Communication inbox', 'communications/notifications', 'communications.announcements.view'],
 ];
 
 export function WorkspaceLayout({ children, title, area }: WorkspaceLayoutProps) {
@@ -167,7 +177,15 @@ export function WorkspaceLayout({ children, title, area }: WorkspaceLayoutProps)
                         ? currentTenant?.permissions.some((key) =>
                               ['academic.records.view-own', 'academic.records.guardian.view'].includes(key),
                           )
-                        : currentTenant?.permissions.includes(permission),
+                        : target === 'library'
+                          ? currentTenant?.permissions.some((key) =>
+                                ['library.view', 'library.member.view-own'].includes(key),
+                            )
+                          : target === 'hr/operations'
+                            ? currentTenant?.permissions.some((key) =>
+                                  ['hr.staff.view-own', 'hr.attendance.manage', 'hr.leave.manage'].includes(key),
+                              )
+                          : currentTenant?.permissions.includes(permission),
               );
     const urlFor = (target: string) =>
         area === 'platform'
@@ -186,6 +204,11 @@ export function WorkspaceLayout({ children, title, area }: WorkspaceLayoutProps)
             <Head
                 title={`${title} · ${area === 'platform' ? 'Platform' : (currentTenant?.name ?? 'Institution')}`}
             />
+            {branding?.faviconUrl && area === 'tenant' ? (
+                <Head>
+                    <link rel="icon" href={branding.faviconUrl} />
+                </Head>
+            ) : null}
             <a className="skip-link" href="#main-content">
                 Skip to content
             </a>

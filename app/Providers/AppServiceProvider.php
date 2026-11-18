@@ -92,5 +92,19 @@ class AppServiceProvider extends ServiceProvider
 
             return Limit::perMinute(10)->by($identity.'|'.$tenantKey);
         });
+        RateLimiter::for('integration-api', function (Request $request): array {
+            $bearer = (string) $request->bearerToken();
+            $credentialKey = preg_match('/^tmi_[a-f0-9]{64}$/', $bearer) === 1
+                ? hash('sha256', $bearer)
+                : 'invalid';
+
+            // Keep an IP ceiling for invalid-token traffic and also cap each
+            // credential across distributed source addresses. Keys deliberately
+            // exclude caller-controlled tenant route values to bound key growth.
+            return [
+                Limit::perMinute(120)->by('integration-token|'.$credentialKey),
+                Limit::perMinute(120)->by('integration-ip|'.$request->ip()),
+            ];
+        });
     }
 }

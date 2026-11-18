@@ -1,15 +1,34 @@
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
 
 export default function ResetPassword({ token, email }: { token: string; email: string }) {
     const form = useForm({ token, email, password: '', password_confirmation: '' });
+    const page = usePage<{
+        branding: null | { displayName: string | null; logoUrl: string | null; faviconUrl: string | null };
+    }>();
+    const brandName = page.props.branding?.displayName ?? 'TechMentors.PK';
     return (
         <div className="bg-canvas grid min-h-screen place-items-center px-4 py-10">
             <Head title="Choose a new password · TechMentors.PK" />
+            {page.props.branding?.faviconUrl ? (
+                <Head>
+                    <link rel="icon" href={page.props.branding.faviconUrl} />
+                </Head>
+            ) : null}
             <main className="border-border bg-surface shadow-card w-full max-w-md rounded-2xl border p-7 sm:p-9">
-                <Link href="/login" className="text-brand-link text-sm font-semibold">
-                    TechMentors.PK
+                <Link
+                    href="/login"
+                    className="text-brand-link inline-flex items-center gap-3 text-sm font-semibold"
+                >
+                    {page.props.branding?.logoUrl ? (
+                        <img
+                            src={page.props.branding.logoUrl}
+                            alt=""
+                            className="h-9 max-w-36 object-contain"
+                        />
+                    ) : null}
+                    {brandName}
                 </Link>
                 <h1 className="text-navy-950 mt-7 text-3xl font-semibold">Choose a new password</h1>
                 <form

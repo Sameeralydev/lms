@@ -7,12 +7,14 @@ use App\Domain\Assessments\QuizAssessmentWorkflow;
 use App\Domain\Assessments\QuizOutboxProcessor;
 use App\Domain\Assignments\AssignmentOutboxProcessor;
 use App\Domain\Assignments\AssignmentWorkflow;
+use App\Domain\Audit\AuditRecorder;
 use App\Domain\Enrollment\CourseEnrollmentWorkflow;
 use App\Domain\Learning\CourseDeliveryActivityRetentionProcessor;
 use App\Domain\Learning\CourseDeliveryMediaRetentionProcessor;
 use App\Domain\Sis\SisPrivateDocumentRetentionProcessor;
 use App\Domain\Tenancy\TenantContext;
 use App\Jobs\ProcessBillingRecurringPlans;
+use App\Models\CommunicationsAnnouncement;
 use App\Models\Tenant;
 use App\Models\TenantMembership;
 use App\Models\User;
@@ -24,6 +26,58 @@ use Illuminate\Support\Facades\Schedule;
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+Artisan::command('communications:publish-scheduled', function (AuditRecorder $audit): int {
+    $published = 0;
+    DB::transaction(function () use ($audit, &$published): void {
+        $now = now();
+        $announcements = DB::table('communications_announcements')->where('status', 'scheduled')
+            ->whereNotNull('published_at')->where('published_at', '<=', $now)->orderBy('id')->limit(100)->lockForUpdate()->get();
+        foreach ($announcements as $announcement) {
+            $updated = DB::table('communications_announcements')->where('id', $announcement->id)->where('tenant_id', $announcement->tenant_id)
+                ->where('status', 'scheduled')->where('published_at', '<=', $now)->update(['status' => 'published', 'updated_at' => $now]);
+            if ($updated === 0) {
+                continue;
+            }
+            $roleKeys = json_decode((string) $announcement->audience_roles, true);
+            if (! is_array($roleKeys) || $roleKeys === []) {
+                continue;
+            }
+            $recipients = DB::table('tenant_memberships as tm')->join('membership_role as mr', function ($join): void {
+                $join->on('mr.membership_id', '=', 'tm.id')->on('mr.tenant_id', '=', 'tm.tenant_id');
+            })->join('roles as r', function ($join): void {
+                $join->on('r.id', '=', 'mr.role_id')->on('r.tenant_id', '=', 'tm.tenant_id');
+            })->where('tm.tenant_id', $announcement->tenant_id)->where('tm.status', 'active')->whereIn('r.key', $roleKeys)
+                ->when($announcement->campus_id !== null, fn ($query) => $query->where('tm.campus_id', $announcement->campus_id))
+                ->whereNotExists(function ($query) use ($announcement): void {
+                    $query->selectRaw('1')->from('communications_notification_preferences as pref')
+                        ->whereColumn('pref.tenant_id', 'tm.tenant_id')->whereColumn('pref.user_id', 'tm.user_id')
+                        ->where('pref.tenant_id', $announcement->tenant_id)->where('pref.event_type', 'announcement')
+                        ->where('pref.in_app_enabled', false);
+                })
+                ->distinct()->pluck('tm.user_id')->all();
+            $rows = array_map(static fn (int $userId): array => [
+                'tenant_id' => $announcement->tenant_id, 'user_id' => $userId, 'type' => 'announcement',
+                'reference_id' => $announcement->id, 'context_id' => null, 'title' => 'New institution announcement',
+                'summary' => mb_substr((string) $announcement->title, 0, 500), 'read_at' => null,
+                'created_at' => $now, 'updated_at' => $now,
+            ], $recipients);
+            if ($rows !== []) {
+                DB::table('communications_notifications')->insertOrIgnore($rows);
+            }
+            $subject = new CommunicationsAnnouncement;
+            $subject->setRawAttributes((array) $announcement, true);
+            $audit->record('communications.announcement.published', User::query()->find($announcement->created_by), (int) $announcement->tenant_id, $subject, [
+                'announcement_id' => (int) $announcement->id, 'campus_id' => $announcement->campus_id,
+                'audience_role_count' => count($roleKeys),
+            ]);
+            $published++;
+        }
+    });
+    $this->info(sprintf('Scheduled communications: published=%d', $published));
+
+    return 0;
+})->purpose('Publish due institution announcements and notify their authorized audiences');
 
 Artisan::command('admissions:outbox:dispatch', function (AdmissionOutboxProcessor $processor): int {
     $result = $processor->dispatchAvailable();
@@ -214,6 +268,7 @@ Artisan::command('enrollment:waitlist:expire', function (TenantContext $context)
 })->purpose('Expire waitlist offers and release seats to the next eligible learner');
 
 Schedule::command('enrollment:waitlist:expire')->everyMinute()->withoutOverlapping();
+Schedule::command('communications:publish-scheduled')->everyMinute()->withoutOverlapping();
 
 Schedule::command('admissions:outbox:dispatch')->everyMinute()->withoutOverlapping();
 Schedule::command('attendance:outbox:dispatch')->everyMinute()->withoutOverlapping();

@@ -10,7 +10,9 @@ use App\Http\Controllers\HomeController;
 use App\Http\Controllers\Platform\AuditController as PlatformAuditController;
 use App\Http\Controllers\Platform\DashboardController as PlatformDashboardController;
 use App\Http\Controllers\Platform\OperatorController;
+use App\Http\Controllers\Platform\PlanController;
 use App\Http\Controllers\Platform\SettingsController as PlatformSettingsController;
+use App\Http\Controllers\Platform\SubscriptionController;
 use App\Http\Controllers\Platform\TenantController as PlatformTenantController;
 use App\Http\Controllers\Workspace\AcademicAnalyticsController;
 use App\Http\Controllers\Workspace\AcademicAuditController;
@@ -35,6 +37,9 @@ use App\Http\Controllers\Workspace\BillingLifecycleController;
 use App\Http\Controllers\Workspace\BillingPaymentController;
 use App\Http\Controllers\Workspace\BrandingController;
 use App\Http\Controllers\Workspace\CampusController;
+use App\Http\Controllers\Workspace\CommunicationsAnnouncementController;
+use App\Http\Controllers\Workspace\CommunicationsMessageController;
+use App\Http\Controllers\Workspace\CommunicationsNotificationController;
 use App\Http\Controllers\Workspace\CourseDeliveryAnalyticsController;
 use App\Http\Controllers\Workspace\CourseDeliveryController;
 use App\Http\Controllers\Workspace\CourseDeliveryLiveSessionController;
@@ -56,7 +61,11 @@ use App\Http\Controllers\Workspace\ExaminationResultsController;
 use App\Http\Controllers\Workspace\ExaminationSeatingController;
 use App\Http\Controllers\Workspace\ExaminationStaffController;
 use App\Http\Controllers\Workspace\GradebookController;
+use App\Http\Controllers\Workspace\HrOperationsController;
+use App\Http\Controllers\Workspace\HrStaffController;
 use App\Http\Controllers\Workspace\InstitutionController;
+use App\Http\Controllers\Workspace\IntegrationController;
+use App\Http\Controllers\Workspace\LibraryController;
 use App\Http\Controllers\Workspace\MembershipController;
 use App\Http\Controllers\Workspace\OfficialAcademicRecordController;
 use App\Http\Controllers\Workspace\RoleController;
@@ -105,6 +114,11 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/audit', [PlatformAuditController::class, 'index'])->middleware('platform.permission:platform.audit.view')->name('audit.index');
         Route::get('/operators', [OperatorController::class, 'index'])->middleware('platform.permission:platform.operators.manage')->name('operators.index');
         Route::post('/operators', [OperatorController::class, 'store'])->middleware('platform.permission:platform.operators.manage')->name('operators.store');
+        Route::get('/plans', [PlanController::class, 'index'])->middleware('platform.permission:platform.plans.manage')->name('plans.index');
+        Route::post('/plans', [PlanController::class, 'store'])->middleware('platform.permission:platform.plans.manage')->name('plans.store');
+        Route::put('/plans/{plan}', [PlanController::class, 'update'])->middleware('platform.permission:platform.plans.manage')->name('plans.update');
+        Route::get('/subscriptions', [SubscriptionController::class, 'index'])->middleware('platform.permission:platform.subscriptions.manage')->name('subscriptions.index');
+        Route::put('/tenants/{tenant:slug}/subscription', [SubscriptionController::class, 'assign'])->middleware('platform.permission:platform.subscriptions.manage')->name('subscriptions.assign');
         Route::prefix('tenants')->middleware('platform.permission:platform.tenants.view')->name('tenants.')->group(function (): void {
             Route::get('/', [PlatformTenantController::class, 'index'])->name('index');
             Route::get('/create', [PlatformTenantController::class, 'create'])->middleware('platform.permission:platform.tenants.create')->name('create');
@@ -117,7 +131,7 @@ Route::middleware('auth')->group(function (): void {
 
     Route::post('/workspace/theme', [ThemeController::class, 'update'])->name('workspace.theme.update');
 
-    Route::prefix('t/{tenant:slug}')->name('tenant.')->middleware('tenant.workspace')->group(function (): void {
+    Route::prefix('t/{tenant:slug}')->name('tenant.')->middleware(['tenant.workspace', 'tenant.entitlement'])->group(function (): void {
         Route::get('/', fn (Tenant $tenant) => redirect()->route('tenant.dashboard', $tenant))->name('home');
         Route::get('/dashboard', WorkspaceDashboardController::class)->name('dashboard');
         Route::get('/billing/my', [BillingController::class, 'myInvoices'])->middleware('tenant.permission:billing.portal.view-own')->name('billing.my');
@@ -187,6 +201,44 @@ Route::middleware('auth')->group(function (): void {
             Route::post('/refunds/{refundId}/approve', [BillingPaymentController::class, 'approveRefund'])->middleware('tenant.permission:billing.refunds.approve')->whereNumber('refundId')->name('refunds.approve');
             Route::post('/refunds/{refundId}/reject', [BillingPaymentController::class, 'rejectRefund'])->middleware('tenant.permission:billing.refunds.approve')->whereNumber('refundId')->name('refunds.reject');
             Route::post('/refunds/{refundId}/execute', [BillingPaymentController::class, 'executeRefund'])->middleware('tenant.permission:billing.refunds.execute')->whereNumber('refundId')->name('refunds.execute');
+        });
+        Route::get('/integrations', [IntegrationController::class, 'index'])->middleware('tenant.permission:integrations.view')->name('integrations.index');
+        Route::post('/integrations/credentials', [IntegrationController::class, 'store'])->middleware('tenant.permission:integrations.manage')->name('integrations.credentials.store');
+        Route::delete('/integrations/credentials/{credentialId}', [IntegrationController::class, 'revoke'])->middleware('tenant.permission:integrations.manage')->whereNumber('credentialId')->name('integrations.credentials.revoke');
+        Route::prefix('hr/staff')->name('hr.staff.')->group(function (): void {
+            Route::get('/', [HrStaffController::class, 'index'])->name('index');
+            Route::get('/create', [HrStaffController::class, 'create'])->middleware('tenant.permission:hr.staff.manage')->name('create');
+            Route::post('/', [HrStaffController::class, 'store'])->middleware('tenant.permission:hr.staff.manage')->name('store');
+            Route::get('/{staffId}', [HrStaffController::class, 'show'])->whereNumber('staffId')->name('show');
+            Route::put('/{staffId}', [HrStaffController::class, 'update'])->middleware('tenant.permission:hr.staff.manage')->whereNumber('staffId')->name('update');
+            Route::patch('/{staffId}/status', [HrStaffController::class, 'changeStatus'])->middleware('tenant.permission:hr.staff.status.manage')->whereNumber('staffId')->name('status');
+        });
+        Route::prefix('hr/operations')->name('hr.operations.')->group(function (): void {
+            Route::get('/', [HrOperationsController::class, 'index'])->name('index');
+            Route::post('/leave-types', [HrOperationsController::class, 'storeLeaveType'])->middleware('tenant.permission:hr.leave.manage')->name('leave-types.store');
+            Route::patch('/leave-types/{typeId}/status', [HrOperationsController::class, 'setLeaveTypeStatus'])->middleware('tenant.permission:hr.leave.manage')->whereNumber('typeId')->name('leave-types.status');
+            Route::post('/leave-requests', [HrOperationsController::class, 'requestLeave'])->name('leave-requests.store');
+            Route::patch('/leave-requests/{requestId}/decision', [HrOperationsController::class, 'decideLeave'])->middleware('tenant.permission:hr.leave.manage')->whereNumber('requestId')->name('leave-requests.decision');
+            Route::patch('/leave-requests/{requestId}/cancel', [HrOperationsController::class, 'cancelLeave'])->whereNumber('requestId')->name('leave-requests.cancel');
+            Route::post('/attendance/clock-in', [HrOperationsController::class, 'clockIn'])->name('attendance.clock-in');
+            Route::post('/attendance/clock-out', [HrOperationsController::class, 'clockOut'])->name('attendance.clock-out');
+        });
+        Route::prefix('library')->name('library.')->group(function (): void {
+            Route::get('/', [LibraryController::class, 'index'])->name('index');
+            Route::post('/locations', [LibraryController::class, 'storeLocation'])->middleware('tenant.permission:library.policy.manage')->name('locations.store');
+            Route::put('/locations/{locationId}', [LibraryController::class, 'updateLocation'])->middleware('tenant.permission:library.policy.manage')->whereNumber('locationId')->name('locations.update');
+            Route::post('/resources', [LibraryController::class, 'storeResource'])->middleware('tenant.permission:library.manage')->name('resources.store');
+            Route::put('/resources/{resourceId}', [LibraryController::class, 'updateResource'])->middleware('tenant.permission:library.manage')->whereNumber('resourceId')->name('resources.update');
+            Route::patch('/resources/{resourceId}/status', [LibraryController::class, 'resourceStatus'])->middleware('tenant.permission:library.manage')->whereNumber('resourceId')->name('resources.status');
+            Route::post('/copies', [LibraryController::class, 'storeCopy'])->middleware('tenant.permission:library.manage')->name('copies.store');
+            Route::patch('/copies/{copyId}', [LibraryController::class, 'updateCopy'])->middleware('tenant.permission:library.manage')->whereNumber('copyId')->name('copies.update');
+            Route::post('/members', [LibraryController::class, 'storeMember'])->middleware('tenant.permission:library.members.manage')->name('members.store');
+            Route::patch('/members/{libraryMembershipId}/status', [LibraryController::class, 'setMemberStatus'])->middleware('tenant.permission:library.members.manage')->whereNumber('libraryMembershipId')->name('members.status');
+            Route::post('/checkout', [LibraryController::class, 'checkout'])->middleware('tenant.permission:library.circulate')->name('checkout');
+            Route::post('/loans/{loanId}/return', [LibraryController::class, 'return'])->middleware('tenant.permission:library.circulate')->whereNumber('loanId')->name('loans.return');
+            Route::post('/loans/{loanId}/renew', [LibraryController::class, 'renew'])->whereNumber('loanId')->name('loans.renew');
+            Route::post('/resources/{resourceId}/reserve', [LibraryController::class, 'reserve'])->whereNumber('resourceId')->name('resources.reserve');
+            Route::post('/reservations/{reservationId}/cancel', [LibraryController::class, 'cancelReservation'])->whereNumber('reservationId')->name('reservations.cancel');
         });
         Route::get('/institution', [InstitutionController::class, 'show'])->middleware('tenant.permission:tenant.view')->name('institution.show');
         Route::put('/institution', [InstitutionController::class, 'update'])->middleware('tenant.permission:institution.update')->name('institution.update');
@@ -339,6 +391,23 @@ Route::middleware('auth')->group(function (): void {
         Route::prefix('assignment-notifications')->name('assignment-notifications.')->middleware('tenant.permission:assignments.view')->group(function (): void {
             Route::get('/', [AssignmentNotificationController::class, 'index'])->name('index');
             Route::post('/{notificationId}/read', [AssignmentNotificationController::class, 'markRead'])->whereNumber('notificationId')->name('read');
+        });
+        Route::prefix('communications/announcements')->name('communications.announcements.')->middleware('tenant.permission:communications.announcements.view')->group(function (): void {
+            Route::get('/', [CommunicationsAnnouncementController::class, 'index'])->name('index');
+            Route::post('/', [CommunicationsAnnouncementController::class, 'store'])->middleware('tenant.permission:communications.announcements.manage')->name('store');
+            Route::put('/{announcementId}', [CommunicationsAnnouncementController::class, 'update'])->middleware('tenant.permission:communications.announcements.manage')->whereNumber('announcementId')->name('update');
+            Route::patch('/{announcementId}/archive', [CommunicationsAnnouncementController::class, 'archive'])->middleware('tenant.permission:communications.announcements.manage')->whereNumber('announcementId')->name('archive');
+            Route::post('/{announcementId}/read', [CommunicationsAnnouncementController::class, 'markRead'])->whereNumber('announcementId')->name('read');
+        });
+        Route::prefix('communications/messages')->name('communications.messages.')->middleware('tenant.permission:communications.messages.view')->group(function (): void {
+            Route::get('/', [CommunicationsMessageController::class, 'index'])->name('index');
+            Route::post('/', [CommunicationsMessageController::class, 'start'])->middleware('tenant.permission:communications.messages.send')->name('start');
+            Route::post('/{conversationId}', [CommunicationsMessageController::class, 'reply'])->middleware('tenant.permission:communications.messages.send')->whereNumber('conversationId')->name('reply');
+        });
+        Route::prefix('communications/notifications')->name('communications.notifications.')->middleware('tenant.permission:communications.announcements.view')->group(function (): void {
+            Route::get('/', [CommunicationsNotificationController::class, 'index'])->name('index');
+            Route::post('/{notificationId}/read', [CommunicationsNotificationController::class, 'markRead'])->whereNumber('notificationId')->name('read');
+            Route::put('/preferences', [CommunicationsNotificationController::class, 'updatePreferences'])->middleware('tenant.permission:communications.preferences.manage-own')->name('preferences.update');
         });
         Route::prefix('attendance')->name('attendance.')->group(function (): void {
             Route::get('/', [AttendanceController::class, 'index'])->middleware('tenant.permission:attendance.view')->name('index');
@@ -702,7 +771,7 @@ Route::middleware('auth')->group(function (): void {
 
 Route::get('/tenant-assets/{tenant:slug}/{kind}', [BrandingController::class, 'image'])->name('tenant.assets.image');
 
-Route::prefix('admissions/{tenant:slug}')->name('public.admissions.')->middleware('admissions.tenant')->group(function (): void {
+Route::prefix('admissions/{tenant:slug}')->name('public.admissions.')->middleware(['admissions.tenant', 'tenant.entitlement'])->group(function (): void {
     Route::get('/', [PublicAdmissionsController::class, 'index'])->middleware('admissions.enabled')->name('index');
     Route::get('/intakes/{intakeCode}', [PublicAdmissionsController::class, 'showIntake'])->middleware('admissions.enabled:public')->name('intakes.show');
     Route::post('/inquiries', [PublicAdmissionsController::class, 'inquiry'])->middleware(['admissions.enabled:inquiries', 'throttle:public'])->name('inquiries.store');
@@ -722,7 +791,7 @@ Route::prefix('admissions/{tenant:slug}')->name('public.admissions.')->middlewar
     Route::post('/offers/{offerId}/response', [ApplicantAdmissionsController::class, 'respondToOffer'])->middleware(['auth', 'verified', 'throttle:applicant.application'])->name('offers.respond');
 });
 
-Route::prefix('t/{tenant:slug}/admissions')->name('tenant.admissions.')->middleware(['auth', 'tenant.workspace'])->group(function (): void {
+Route::prefix('t/{tenant:slug}/admissions')->name('tenant.admissions.')->middleware(['auth', 'tenant.workspace', 'tenant.entitlement'])->group(function (): void {
     Route::get('/', [AdmissionsController::class, 'index'])->middleware('tenant.permission:admissions.view')->name('index');
     Route::put('/settings', [AdmissionsController::class, 'updateSettings'])->middleware('tenant.permission:admissions.settings.manage')->name('settings.update');
 

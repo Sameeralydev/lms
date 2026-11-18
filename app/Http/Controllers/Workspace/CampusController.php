@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Workspace;
 
 use App\Domain\Audit\AuditRecorder;
 use App\Domain\Tenancy\TenantContext;
+use App\Domain\Tenancy\TenantEntitlements;
 use App\Http\Controllers\Controller;
 use App\Models\Campus;
 use App\Models\Institution;
@@ -32,12 +33,16 @@ class CampusController extends Controller
         return Inertia::render('workspace/campuses/index', ['campuses' => $query->paginate(15)->withQueryString(), 'filters' => $request->only('q'), 'tenant' => ['slug' => $context->tenant()->slug]]);
     }
 
-    public function store(Request $request, TenantContext $context, AuditRecorder $audit): RedirectResponse
+    public function store(Request $request, TenantContext $context, TenantEntitlements $entitlements, AuditRecorder $audit): RedirectResponse
     {
         $institution = Institution::query()->firstOrFail();
         $data = $request->validate($this->rules((int) $institution->getKey()));
-        $campus = DB::transaction(function () use ($data, $context, $institution, $request, $audit): Campus {
+        $campus = DB::transaction(function () use ($data, $context, $entitlements, $institution, $request, $audit): Campus {
+            $tenant = Tenant::query()->lockForUpdate()->findOrFail($context->tenant()->getKey());
             Institution::query()->lockForUpdate()->findOrFail($institution->getKey());
+            if (($data['status'] ?? 'active') === 'active') {
+                $entitlements->assertWithinLimit($tenant, 'campuses', Campus::query()->where('status', 'active')->count());
+            }
             if ($data['is_primary'] ?? false) {
                 Campus::query()->where('institution_id', $institution->getKey())->update(['is_primary' => false]);
             }
@@ -74,14 +79,18 @@ class CampusController extends Controller
         return back()->with('status', 'Campus updated.');
     }
 
-    public function status(Request $request, Tenant $tenant, int $campusId, TenantContext $context, AuditRecorder $audit): RedirectResponse
+    public function status(Request $request, Tenant $tenant, int $campusId, TenantContext $context, TenantEntitlements $entitlements, AuditRecorder $audit): RedirectResponse
     {
         abort_unless($tenant->is($context->tenant()), 404);
         $data = $request->validate(['status' => ['required', 'in:active,inactive']]);
-        DB::transaction(function () use ($campusId, $data, $request, $context, $audit): void {
+        DB::transaction(function () use ($campusId, $data, $request, $context, $entitlements, $audit): void {
+            $lockedTenant = Tenant::query()->lockForUpdate()->findOrFail($context->tenant()->getKey());
             Institution::query()->lockForUpdate()->firstOrFail();
             $campus = Campus::query()->lockForUpdate()->findOrFail($campusId);
             $this->assertCampusAssignment($campus, $context);
+            if ($data['status'] === 'active' && $campus->status !== 'active') {
+                $entitlements->assertWithinLimit($lockedTenant, 'campuses', Campus::query()->where('status', 'active')->count());
+            }
             abort_if($data['status'] === 'inactive' && $campus->is_primary, 409, 'Choose another primary campus before deactivating this one.');
             $campus->forceFill(['status' => $data['status']])->save();
             $audit->record('campus.status_changed', $request->user(), (int) $context->tenant()->getKey(), $campus, ['status' => $campus->status]);

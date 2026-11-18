@@ -4,13 +4,33 @@ import { TextField } from '@/components/ui/text-field';
 
 export default function ForgotPassword() {
     const form = useForm({ email: '' });
-    const status = usePage<{ flash: { status?: string } }>().props.flash?.status;
+    const page = usePage<{
+        flash: { status?: string };
+        branding: null | { displayName: string | null; logoUrl: string | null; faviconUrl: string | null };
+    }>();
+    const status = page.props.flash?.status;
+    const brandName = page.props.branding?.displayName ?? 'TechMentors.PK';
     return (
         <div className="bg-canvas grid min-h-screen place-items-center px-4 py-10">
             <Head title="Reset password · TechMentors.PK" />
+            {page.props.branding?.faviconUrl ? (
+                <Head>
+                    <link rel="icon" href={page.props.branding.faviconUrl} />
+                </Head>
+            ) : null}
             <main className="border-border bg-surface shadow-card w-full max-w-md rounded-2xl border p-7 sm:p-9">
-                <Link href="/login" className="text-brand-link text-sm font-semibold">
-                    Back to sign in
+                <Link
+                    href="/login"
+                    className="text-brand-link inline-flex items-center gap-3 text-sm font-semibold"
+                >
+                    {page.props.branding?.logoUrl ? (
+                        <img
+                            src={page.props.branding.logoUrl}
+                            alt=""
+                            className="h-9 max-w-36 object-contain"
+                        />
+                    ) : null}
+                    {brandName} · Sign in
                 </Link>
                 <h1 className="text-navy-950 mt-7 text-3xl font-semibold">Reset your password</h1>
                 <p className="text-text-secondary mt-2 text-sm leading-6">

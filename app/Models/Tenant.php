@@ -31,6 +31,12 @@ class Tenant extends Model
         return $this->hasMany(TenantMembership::class);
     }
 
+    /** @return HasMany<Role, $this> */
+    public function roles(): HasMany
+    {
+        return $this->hasMany(Role::class);
+    }
+
     /** @return HasMany<TenantDomain, $this> */
     public function domains(): HasMany
     {
@@ -53,5 +59,10 @@ class Tenant extends Model
     public function settings(): HasMany
     {
         return $this->hasMany(TenantSetting::class);
+    }
+
+    public function subscription(): HasOne
+    {
+        return $this->hasOne(TenantSubscription::class);
     }
 }

@@ -76,9 +76,11 @@ class TenantController extends Controller
         return $response;
     }
 
-    public function show(Tenant $tenant): Response
+    public function show(Request $request, Tenant $tenant): Response
     {
         $institution = Institution::query()->withoutGlobalScope('tenant')->where('tenant_id', $tenant->getKey())->first();
+        $subscription = $tenant->subscription()->with('plan:id,name,key,entitlements,limits')->first();
+        $canManageSubscription = $request->user()->hasPlatformPermission('platform.subscriptions.manage');
 
         return Inertia::render('platform/tenants/show', [
             'tenant' => $tenant->loadCount([
@@ -89,6 +91,10 @@ class TenantController extends Controller
             'recentEvents' => AuditEvent::query()->where('tenant_id', $tenant->getKey())->latest('occurred_at')->limit(12)->get(),
             'ownerInvitation' => $tenant->invitations()->where('role_key', 'tenant.owner')->latest()->first(['id', 'email', 'status', 'expires_at', 'accepted_at']),
             'canManageStatus' => $tenant->status !== 'archived',
+            'subscription' => $subscription ? ['status' => $subscription->status, 'startedAt' => $subscription->started_at, 'plan' => $subscription->plan] : null,
+            'subscriptionEvents' => $subscription?->events()->latest('occurred_at')->limit(10)->get(['id', 'event_type', 'details', 'occurred_at']) ?? [],
+            'availablePlans' => $canManageSubscription ? \App\Models\TenantPlan::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'key']) : [],
+            'canManageSubscription' => $canManageSubscription,
         ]);
     }
 

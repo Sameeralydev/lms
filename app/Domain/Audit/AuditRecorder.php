@@ -20,7 +20,7 @@ final class AuditRecorder
             'event_type' => $event,
             'subject_type' => $subject ? $subject::class : null,
             'subject_id' => $subject?->getKey() === null ? null : (string) $subject->getKey(),
-            'request_id' => $request?->header('X-Request-Id') ? substr((string) $request->header('X-Request-Id'), 0, 80) : null,
+            'request_id' => $request?->attributes->get('request_id'),
             'metadata' => $metadata,
             'occurred_at' => now(),
         ]);
