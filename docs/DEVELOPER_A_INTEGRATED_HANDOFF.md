@@ -2,36 +2,42 @@
 
 Updated: 2026-11-18
 
-This checkpoint preserves the existing Phase 15, 17, and 18 implementation work on `developer-a/integrated`. It does not mark any phase complete and does not authorize Phase 19 or Phase 24.
+Repository: `https://github.com/Sameeralydev/lms.git`
+
+Target branch: `developer-a/integrated`
+
+The target branch already existed at `09f319c` and matched `origin/developer-a/integrated` at inspection. Existing history includes the Phase 15 analytics commit (`53ae91b`) and billing/payment integration commit (`aba49f5`, containing Phase 17/18 foundation). This continuation adds commit `3f4b097` (`Complete Phase 17 billing lifecycle vertical slice`). This handoff does not mark any phase complete or authorize Phase 19/24.
 
 ## Phase 15 — Analytics and intelligence
 
-Implemented in the current worktree: a tenant/institution-scoped catalog of 14 allowlisted report sources; safe filters, grouping, bounded pagination, saved configurations and formula-safe CSV; privacy-limited record drill-down; server-generated PDF using the existing academic-record PDF renderer; timezone-aware daily/weekly/monthly schedules with queued generation, private downloads, internal notifications and idempotent run tracking; and database-backed, permission-filtered role dashboard summaries.
+The cumulative branch contains the 14-source allowlisted report builder, scoped filters/grouping/pagination, saved configurations, safe CSV, record drill-down, PDF generation, scheduled reports and database-backed role dashboard summaries. Focused continuation evidence is in `docs/phase-reports/phase-15/PHASE_15_IMPLEMENTATION_CONTINUATION_2026-11-18.md`.
 
-The latest focused evidence recorded in `phase-reports/phase-15/PHASE_15_IMPLEMENTATION_CONTINUATION_2026-11-18.md` is 20 Phase 15 SQLite tests / 571 assertions, focused PHPStan and syntax checks, frontend checks, production build, and `git diff --check`. Earlier guarded MySQL/concurrency results remain historical and are not re-certified by this Git handoff.
-
-Still incomplete or pending: the full approved Phase 15 contract/R&D source was not located; complete role/module dashboards and product-wide analytics source coverage cannot be established from available materials, especially for finance data owned by absent modules; whole-product role/screen/theme acceptance and full regression remain pending; six EICAR integration cases were previously blocked by host interception; fresh guarded MySQL availability/postflight and hosted CI remain unverified. See the Phase 15 reports and `qa/DEFERRED_PRODUCT_QA_BACKLOG.md`.
+Remaining implementation: finance analytics sources whose owning modules are absent, and any dashboard actions or analytics requirements not defensibly supported by the missing original Phase 15 contract/R&D source. Remaining QA includes full product-wide role/screen/theme verification, fresh guarded MySQL, full regression, scanner/EICAR environment cases, hosted CI and human assistive-technology review. Prior failures/results remain historical.
 
 ## Phase 17 — Fees and billing
 
-Implemented foundation: scoped fee heads and structures, single-student invoice issuance, immutable line snapshots, idempotency, unpaid cancellation, learner/guardian invoice views, private printable invoice output, scoped invoice reporting and formula-safe CSV.
+The cumulative branch has fee heads/structures, single-student invoices, immutable line snapshots, cancellation, learner/guardian invoice visibility, private invoice PDFs and scoped invoice CSV reporting. This continuation adds manual scoped fee assignments, independent concession approval and future revocation, percentage/fixed calculation snapshots, installment draft/publication, independent adjustment request/approval/posting, a derived financial statement, lifecycle/ledger staff pages and focused feature coverage.
 
-Still incomplete per `phase-reports/phase-17/PHASE_17_REQUIREMENT_TRACEABILITY.md`: enrollment-driven fee assignments; concessions/discounts; installments; bulk, recurring and admission/enrollment-triggered billing; immutable financial ledger/statements; late-fee policy; broader adjustments/reversals; billing notifications; richer reports; and MySQL/browser/concurrency verification. Several policy-dependent workflows require approved business rules.
-
-Recorded focused verification: 5 tests / 144 assertions, focused static/frontend checks, PHP syntax and Pint. Do not infer MySQL or full-browser acceptance.
+Remaining implementation includes enrollment/admission billing hooks, bulk/recurring billing, transfer/withdrawal proration, adjustment reversals, installment amendments and payment integration, notifications, student/guardian ledger UX, richer report sources/PDF/drill-down and related policy decisions. The exact traceability and evidence are in `docs/phase-reports/phase-17/PHASE_17_REQUIREMENT_TRACEABILITY.md` and `DEVELOPMENT_HANDOFF.md`. Phase 17 remains **DEVELOPMENT IN PROGRESS**.
 
 ## Phase 18 — Payments, collections and reconciliation
 
-Implemented foundation: transactional cash collection, pending/verified manual bank transfers, scoped payment allocation, immutable receipt snapshots, segregated manual refunds with audit events, explicit guardian financial-visibility consent, internal database notifications, and period-based internal reconciliation with CSV export.
+The cumulative branch contains manual cash and bank-transfer collection, payment allocation, receipts, segregated refunds, guardian financial visibility, internal notifications and internal period reconciliation. Remaining work includes owner-approved external provider and bank settlement contracts, a separate credit/reversal policy, and any additional workflows absent from the verified source requirements. Guarded MySQL, concurrency and broad authenticated browser/theme verification remain pending as stated in Phase 18 reports.
 
-Still incomplete or dependent on owner input per `phase-reports/phase-18/REQUIREMENT_TRACEABILITY.md`: no approved online provider or callback contract; no external statement/settlement matching or reconciliation-batch lifecycle; no separate reversal/credit-ledger policy; cheque and cashier shift/drawer workflows lack approved policy; refund payout remains a manually recorded action. Guarded MySQL ownership/integration/concurrency and authenticated browser/theme verification are pending.
+## Current continuation verification
 
-Recorded latest focused verification: 6 tests / 140 assertions, focused PHPStan, TypeScript, ESLint, Prettier, Pint, Vite production build, route inventory and `git diff --check`. No MySQL, provider, bank-match or external delivery result is claimed.
+- `php tests/run.php --phase=17 --profile=sqlite --no-report` — PASS, 6 tests / 188 assertions; includes the lifecycle migration in isolated SQLite and assignment → concession → invoice → installments → adjustment → ledger behavior.
+- Focused PHPStan — PASS; focused Pint/PHP syntax — PASS.
+- `php artisan route:list --path=billing --except-vendor` — PASS, 40 routes.
+- `npm.cmd run typecheck`, focused ESLint and Prettier — PASS.
+- `npm.cmd run build` — PASS, 706 modules transformed.
+- `composer validate --no-check-publish`, `composer check-platform-reqs`, and autoload dry-run — PASS.
+- `git diff --check` — PASS after documentation formatting cleanup.
+- No persistent MySQL database was contacted. No migration was executed against development/MySQL. No credentials, ignored environment files, ownership manifests, `vendor`, `node_modules`, build output or runtime files were staged.
 
-## Integration notes
+## Git and recovery safety
 
-- Central automated-test configuration is `.env.testing` with runtime SQLite/MySQL profiles; `.env.testing.example` contains no credentials. Phase-specific ignored files are not runner inputs.
-- `tests/run.php` is the shared entry point. Phase MySQL operations must continue through that phase's existing guarded runner and ownership lifecycle.
-- Additive migrations for the implemented analytics, billing, and payment work are present but were not run as part of this Git handoff.
-- Phase 14 report files were restored from the retained recovery stash after an intermediate restore mishap. The stash `developer-a-integrated-recovery-backup-2026-11-18` remains available; do not drop it until the pushed branch is independently confirmed.
-- No secrets, ignored environment files, database ownership manifests, runtime data, or generated dependencies are intended for the Git commits.
+- A source-only recovery copy was saved outside the repository at `C:\xampp\htdocs\lms-preservation-20261118-134049` before staging.
+- Existing Phase 14 recovery stash `stash@{0}` (`developer-a-integrated-recovery-backup-2026-11-18`) was left intact.
+- No history rewrite, force push, branch deletion, destructive checkout, database operation or credential change was performed.
+- The intended handoff push target is `origin/developer-a/integrated`; this change is not pushed to `Projects`, `main`, or Developer B branches.
