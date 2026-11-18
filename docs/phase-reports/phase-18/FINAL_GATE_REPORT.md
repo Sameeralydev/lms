@@ -1,10 +1,10 @@
-# Phase 18 Development Gate
+﻿# Phase 18 Development Gate
 
 Updated: 2026-11-18
 
 ## Result
 
-**PHASE 18 â€” DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS**
+**PHASE 18 Ã¢â‚¬â€ DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS**
 
 ## Evidence
 
@@ -29,7 +29,7 @@ Updated: 2026-11-18
 
 No Phase 19 work is started. No database reset, MySQL migration, credential access, staging, commit, or push occurred.
 
-## Fresh verification addendum â€” 2026-11-18
+## Fresh verification addendum Ã¢â‚¬â€ 2026-11-18
 
 The current focused result supersedes the earlier count above: Phase 18 SQLite `6 passed / 140 assertions` through `php tests/run.php --phase=18 --profile=sqlite --no-report`. Focused PHPStan passed with no errors; TypeScript, targeted ESLint/Prettier, Pint, Vite production build (704 modules), billing route inventory (29 routes), and `git diff --check` passed. Exact evidence is in `TEST_REPORT.md`.
 
@@ -41,8 +41,14 @@ The latest focused SQLite Phase 18 suite passes 7 tests / 207 assertions and inc
 
 Remaining implementation is documented in `REQUIREMENT_TRACEABILITY.md`, including student-credit transfer lifecycle, installment settlement/amendments, external statement matching, optional gateway and cash-control policy. Phase 18 is not complete; no persistent migrations have been applied from this continuation.
 
-## Phase 17/18 implementation checkpoint â€” 2026-11-18
+## Phase 17/18 implementation checkpoint Ã¢â‚¬â€ 2026-11-18
 
 The latest focused SQLite results supersede historical counts above: Phase 17 **16 passed / 395 assertions**; Phase 18 **7 passed / 275 assertions**. Current tests cover fee-applicability draft/activation/overlap rejection, proration preview, installment amendments, recurring operator recovery, cash/transfer allocation, refunds/reversals, guardian authority and internal reconciliation. Focused PHPStan, Pint, PHP syntax, TypeScript, ESLint, Prettier, Composer validation and production build passed. The billing route inventory is 59.
 
-**Gate remains PHASE 18 â€” DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS.** Bank-statement CSV batches/matching, standalone credit ledger, reminder/inbox management and broader report requirements remain unfinished. External provider integration requires owner/provider decisions. MySQL and authenticated browser verification were not performed. No MySQL or protected database was modified.
+**Gate remains PHASE 18 Ã¢â‚¬â€ DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS.** Bank-statement CSV batches/matching, standalone credit ledger, reminder/inbox management and broader report requirements remain unfinished. External provider integration requires owner/provider decisions. MySQL and authenticated browser verification were not performed. No MySQL or protected database was modified.
+
+## Current implementation refresh â€” 2026-11-18
+
+Neutral bank-statement CSV import and internal reconciliation review have now been implemented. The workflow creates scoped bank accounts and reconciliation batches, validates the approved neutral template, rejects identical statement re-imports, persists row fingerprints, presents exact-match suggestions, permits authorized manual match or reasoned exclusion, and closes only fully resolved batches with audit records. It never changes payment settlement state. See `PHASE_18_FINAL_IMPLEMENTATION.md` and the current traceability row.
+
+Fresh focused checks: Phase 17 SQLite 16/395; Phase 18 SQLite 8/291; focused PHPStan, Pint, PHP syntax, TypeScript, ESLint, Prettier, production build, Composer validation/audit, billing route inspection (65), and diff check passed. MySQL, browser/accessibility, concurrency and external provider/settlement requirements remain unverified or incomplete. The status remains **DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS**.

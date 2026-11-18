@@ -1,4 +1,4 @@
-# Finance Final Integration Handoff — Phase 24
+﻿# Finance Final Integration Handoff â€” Phase 24
 
 **Integration status: PARTIAL; billing functionality remains under development.** This handoff records source-of-truth contracts and current extension points; it does not assert full Phase 17/18 acceptance.
 
@@ -34,7 +34,7 @@ Billing permissions include fee/assignment/concession/installment/invoice/adjust
 ## Missing functionality and external decisions
 
 - Academic proration is preview-only; it is not yet applied to invoices or snapshotted.
-- Bank statement import/matching/closure and dedicated credit subledger are not implemented.
+- Neutral CSV statement import, batch review, exact manual matching/reasoned exclusion, duplicate-file detection, and resolved-batch closure are implemented; bank-specific adapters, reopen/reversal workflow, external settlement verification, and a dedicated credit subledger remain unimplemented.
 - Reminder policies and Phase 16 inbox/preference integration are incomplete.
 - Online payment provider, webhook signing contract, credentials and payout provider require an explicit product owner decision. No gateway success is fabricated.
 - Full MySQL migration/concurrency verification and authenticated browser coverage remain pending.
@@ -49,3 +49,7 @@ Billing permissions include fee/assignment/concession/installment/invoice/adjust
 ## Git handoff
 
 Branch: `developer-a/integrated`. Implementation checkpoint commit: `377702c09b75c7ed0c0a838fa8e8a812b0457920` (`Continue Phase 17 and 18 billing workflows`). Normal push to `origin/developer-a/integrated` succeeded. Post-push local HEAD and `origin/developer-a/integrated` both resolve to `377702c09b75c7ed0c0a838fa8e8a812b0457920`. No force push or Developer B branch operation occurred.
+
+## Phase 18 statement reconciliation update — 2026-11-18
+
+Phase 18 now provides a neutral CSV statement-review workflow in addition to internal payment/refund reconciliation. Imported statements are evidence only: matches do not settle payments or prove external bank settlement. Current focused SQLite results are Phase 17 16 tests / 395 assertions and Phase 18 8 tests / 294 assertions. The worktree checkpoint was pushed at `b2ac33f4ca412ecaa3f1703f67d9b5b1c74ce23a`; the new statement reconciliation changes are awaiting final commit/push.

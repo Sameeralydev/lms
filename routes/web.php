@@ -168,6 +168,12 @@ Route::middleware('auth')->group(function (): void {
             Route::get('/payments', [BillingPaymentController::class, 'index'])->middleware('tenant.permission:billing.payments.view')->name('payments.index');
             Route::get('/reconciliation', [BillingPaymentController::class, 'reconciliation'])->middleware('tenant.permission:billing.reports.view')->name('reconciliation');
             Route::get('/reconciliation.csv', [BillingPaymentController::class, 'exportReconciliation'])->middleware('tenant.permission:billing.reports.view')->name('reconciliation.csv');
+            Route::get('/reconciliation/template.csv', [BillingPaymentController::class, 'bankStatementTemplate'])->middleware('tenant.permission:billing.reconciliation.manage')->name('reconciliation.template');
+            Route::post('/reconciliation/accounts', [BillingPaymentController::class, 'createBankAccount'])->middleware('tenant.permission:billing.reconciliation.manage')->name('reconciliation.accounts.store');
+            Route::post('/reconciliation/statements', [BillingPaymentController::class, 'importBankStatement'])->middleware('tenant.permission:billing.reconciliation.manage')->name('reconciliation.statements.store');
+            Route::post('/reconciliation/lines/{lineId}/match', [BillingPaymentController::class, 'matchStatementLine'])->whereNumber('lineId')->middleware('tenant.permission:billing.reconciliation.review')->name('reconciliation.lines.match');
+            Route::post('/reconciliation/lines/{lineId}/exclude', [BillingPaymentController::class, 'excludeStatementLine'])->whereNumber('lineId')->middleware('tenant.permission:billing.reconciliation.review')->name('reconciliation.lines.exclude');
+            Route::post('/reconciliation/batches/{batchId}/close', [BillingPaymentController::class, 'closeStatementBatch'])->whereNumber('batchId')->middleware('tenant.permission:billing.reconciliation.review')->name('reconciliation.batches.close');
             Route::post('/payments', [BillingPaymentController::class, 'store'])->middleware('tenant.permission:billing.payments.collect')->name('payments.store');
             Route::post('/payments/{paymentId}/verify', [BillingPaymentController::class, 'verify'])->middleware('tenant.permission:billing.payments.verify')->whereNumber('paymentId')->name('payments.verify');
             Route::post('/payments/{paymentId}/reject', [BillingPaymentController::class, 'reject'])->middleware('tenant.permission:billing.payments.verify')->whereNumber('paymentId')->name('payments.reject');

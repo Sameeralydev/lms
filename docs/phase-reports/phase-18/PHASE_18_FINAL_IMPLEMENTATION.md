@@ -1,46 +1,43 @@
-# Phase 18 — Final Implementation Checkpoint
+﻿# Phase 18 â€” Final Implementation Checkpoint
 
 **Status: PARTIAL IMPLEMENTATION | FUNCTIONAL WORK REMAINS**
-Checkpoint: 2026-11-18. The report distinguishes local SQLite evidence from unimplemented financial workflows and external provider dependencies.
+Updated: 2026-11-18. This checkpoint records the current implementation and focused SQLite evidence. It is not a Phase 18 acceptance or MySQL verification claim.
 
 ## Implemented
 
-- Cash collections and manual bank-transfer submissions; a transfer stays pending until independent verification.
-- Payment allocation supports partial and multiple invoice allocation with tenant/student/currency checks, transaction locking, idempotency, and invoice balance updates.
-- Confirmed excess payment remains as an unapplied balance. This is visible in the student ledger but is not a separate transferable credit account or immutable credit subledger.
-- Receipts preserve the payment confirmation allocation snapshot. Refunds and full payment reversals use separate request/reviewer/executor permissions, immutable events, idempotency, audit and compensating balance changes. Refunded or reversed funds cannot be reused as confirmed credit.
-- Verified guardians can view financial records only while their explicit financial authority remains active.
-- Internal reconciliation reports payments/refunds by status, method, period, campus and currency; CSV export is scoped and audited. This does not import or match bank statements.
-- Database notifications are emitted for payment/refund lifecycle events. External delivery is not claimed.
+- Cash collection and manual bank-transfer submission/review, with pending transfers excluded from confirmed collections.
+- Transactional partial and multi-invoice allocation, unapplied payment balance, immutable receipt snapshots, idempotency, refund and full reversal review/execution, audit events and internal database notifications.
+- Verified guardian financial visibility gated by explicit active authority; revocation removes access.
+- Phase 17 fee applicability, installment amendment history and proration preview remain available; proration is a preview and is not applied to invoices.
+- Internal reconciliation report grouped by period, campus, method, status and currency, with scoped/audited formula-safe CSV export.
+- Neutral bank-statement CSV workflow: bank account records, strict template validation, bounded import, SHA-256 duplicate-file rejection, persisted batch/line evidence, exact-only match suggestions, authorized manual match or reasoned exclusion, and reviewed batch closure. Imported rows do not confirm or reverse payments. Batch/line actions are tenant/institution/campus scoped and audited. No raw statement file is retained.
 
-## Fresh verification executed
+## Focused verification
 
-- `C:\php83\php.exe tests/run.php --phase=18 --profile=sqlite --no-report` — PASS, **7 tests / 275 assertions**.
-- `C:\php83\php.exe tests/run.php --phase=17 --profile=sqlite --no-report` — PASS, **16 tests / 395 assertions**, including installment/payment reconciliation assertions.
-- Composer validation — PASS. Focused PHPStan, TypeScript, targeted ESLint/Prettier and production Vite build — PASS.
-- No MySQL database was contacted or modified; no persistent migration was run.
+- `C:\php83\php.exe tests/run.php --phase=17 --profile=sqlite --no-report` â€” PASS, **16 tests / 395 assertions**.
+- `C:\php83\php.exe tests/run.php --phase=18 --profile=sqlite --no-report` â€” PASS, **8 tests / 294 assertions**.
+- `C:\php83\php.exe -d memory_limit=1G vendor/bin/phpstan analyse app/Domain/Billing/BillingStatementReconciliation.php app/Http/Controllers/Workspace/BillingPaymentController.php app/Models/BillingBankAccount.php app/Models/BillingReconciliationBatch.php app/Models/BillingReconciliationLine.php app/Domain/Identity/PermissionCatalog.php --no-progress` â€” PASS, no errors.
+- Pint `--test` and PHP syntax checks on changed PHP files â€” PASS.
+- `npm.cmd run typecheck`, targeted ESLint and Prettier â€” PASS.
+- `npm.cmd run build` â€” PASS, 706 modules transformed.
+- `composer validate --no-check-publish` and `composer audit --no-interaction` â€” PASS; no Composer advisories.
+- `php artisan route:list --path=billing --except-vendor --json` â€” 65 routes.
+- `git diff --check` â€” PASS.
 
-## Remaining implementation
+The first PHPStan attempt used the PHP default 128 MiB memory limit and exited with an out-of-memory error. Rerunning with a 1 GiB process limit completed successfully; project configuration was not changed.
 
-- Dedicated immutable credit event ledger and credit refund/reversal workflow are incomplete; there is no cross-person/cross-tenant credit transfer.
-- Neutral CSV bank statement template/import, duplicate statement detection, persisted batches/lines, deterministic suggestions, authorized manual matching/reversal, reviewed closure and exception exports are not implemented.
-- Existing reconciliation is internal record reconciliation, not external settlement verification.
-- No payment gateway provider, webhook handler, signature verifier, replay store or external payout implementation exists. `EXTERNAL PROVIDER DECISION REQUIRED`.
-- Bank-specific formats, cash-drawer/shift, cheque handling, external payout rails and any bank verification policy require product/operations approval; no success behavior is fabricated.
-- Full MySQL concurrency and browser/accessibility suites remain unverified QA work.
+## Remaining implementation and owner inputs
 
-## Workstream traceability
-
-| Area | Backend | Frontend | Database | Focused evidence | Status |
-|---|---|---|---|---|---|
-| Cash and manual transfer | Confirmed cash; pending transfer until independent review | Payment collection and review workspace | Payment and event tables | Phase 18 cash and transfer tests | IMPLEMENTED for internal workflow |
-| Allocation and unapplied amount | Transactional partial/multi-invoice allocation with student/currency/scope checks | Allocation controls and student statement | Payment allocations, current unapplied balance | Phase 18 cash/allocation tests | PARTIAL — no independent credit event subledger |
-| Refund/reversal corrections | Separate request/review/execute and immutable compensating history | Payment reversal/refund controls | Refund/reversal tables and events | Phase 18 refund/reversal tests | PARTIAL — manual payout reference; no external payout |
-| Bank reconciliation | Internal records grouped by date, campus, method, status, currency | Internal reconciliation page and formula-safe CSV | Existing payment/refund sources | Phase 18 internal reconciliation test | PARTIAL — no statement import/matching/closure |
-| Financial reports | Currency-separated internal summaries | Scoped report/CSV/PDF views | Existing billing records | Phase 17/18 local report assertions | PARTIAL — broader source catalog absent |
-| Notifications | Internal database events; guardian authorization checked | Existing internal notifications | Laravel notifications | Payment/refund tests | PARTIAL — no reminder controls or Phase16 inbox integration |
-| Online provider | No provider adapter or callback is enabled | No fake checkout UI | No provider state persisted | Not run | EXTERNAL CONTRACT REQUIRED |
+- A separate immutable, transferable student-credit ledger and credit reversal/transfer policy are not implemented.
+- CSV reconciliation currently supports one neutral approved template only. It has no statement format adapters, match reversal/reopening lifecycle, exception export, or independently verified settlement. The supported internal state is matching/exclusion and closure; it does not represent proof of bank settlement.
+- Installment settlement/reconciliation coverage remains partial.
+- No online payment provider, webhook signature/replay system, or automated payout rail is configured. A provider and callback/payout contract require owner approval.
+- Cashier shift/drawer and cheque workflows have no verified approved lifecycle in the repository.
+- External email/SMS delivery is not configured; the current payment lifecycle notifications are database notifications.
+- Guarded MySQL migration/ownership verification, independent-session finance concurrency, authenticated payment browser journeys, and six-theme accessibility remain unverified.
 
 ## Integration boundary
 
-Billing payment IDs, amounts, ISO currency, method/status, allocations, unapplied amount, executed refund amounts and reversal state are available from the existing billing domain. Phase 15 analytics must distinguish pending from collected funds, subtract executed refunds/reversals correctly, and group every monetary measure by currency. Phase 16 notification integration must reuse the existing communications inbox and preferences rather than introducing a second inbox. Details: `../phase-24/FINANCE_INTEGRATION_CONTRACT.md`.
+The Phase 15 analytics billing sources must exclude pending transfers from collected amounts, subtract executed refunds/reversals, preserve unapplied confirmed balances, and group monetary values by currency. Phase 16 inbox integration should reuse its notification and preference architecture. The Phase 24 handoff describes current extension points; it does not imply those integrations have been completed.
+
+No persistent MySQL schema was contacted or changed in this checkpoint. SQLite test migrations ran only through the isolated central test runner. No Phase 19 work is started.

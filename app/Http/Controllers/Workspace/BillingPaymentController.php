@@ -7,13 +7,16 @@ use App\Domain\Billing\BillingInvoiceReport;
 use App\Domain\Billing\BillingMoney;
 use App\Domain\Billing\BillingPaymentRefundWorkflow;
 use App\Domain\Billing\BillingPaymentWorkflow;
+use App\Domain\Billing\BillingStatementReconciliation;
 use App\Domain\Grading\AcademicRecordPdf;
 use App\Domain\Tenancy\TenantContext;
 use App\Http\Controllers\Controller;
+use App\Models\BillingBankAccount;
 use App\Models\BillingInvoice;
 use App\Models\BillingPayment;
 use App\Models\BillingPaymentRefund;
 use App\Models\BillingPaymentReversal;
+use App\Models\BillingReconciliationBatch;
 use App\Models\Campus;
 use App\Models\Institution;
 use App\Models\SisStudent;
@@ -140,6 +143,27 @@ final class BillingPaymentController extends Controller
             'campuses' => Campus::query()->where('institution_id', $membership->institution_id)
                 ->when($membership->campus_id !== null, fn ($query) => $query->whereKey($membership->campus_id))
                 ->orderBy('name')->get(['id', 'name']),
+            'bank_accounts' => BillingBankAccount::query()->when(! $membership->hasPermission('billing.reconciliation.manage'), fn ($q) => $q->whereRaw('1 = 0'))
+                ->where('tenant_id', $membership->tenant_id)->where('institution_id', $membership->institution_id)
+                ->when($membership->campus_id !== null, fn ($q) => $q->where('campus_id', $membership->campus_id))->where('status', 'active')->orderBy('display_name')
+                ->get(['id', 'account_code', 'display_name', 'currency', 'campus_id']),
+            'statement_batches' => BillingReconciliationBatch::query()->when(! $membership->hasPermission('billing.reconciliation.review') && ! $membership->hasPermission('billing.reconciliation.manage'), fn ($q) => $q->whereRaw('1 = 0'))
+                ->where('tenant_id', $membership->tenant_id)->where('institution_id', $membership->institution_id)
+                ->when($membership->campus_id !== null, fn ($q) => $q->where('campus_id', $membership->campus_id))
+                ->with(['bankAccount:id,display_name,currency', 'lines'])->latest()->limit(25)->get()->map(static fn (BillingReconciliationBatch $batch): array => [
+                    'id' => (int) $batch->getKey(), 'number' => $batch->batch_number, 'account' => $batch->bankAccount->display_name,
+                    'currency' => $batch->currency, 'period_start' => $batch->period_start->toDateString(), 'period_end' => $batch->period_end->toDateString(),
+                    'status' => $batch->status, 'line_count' => (int) $batch->line_count,
+                    'lines' => $batch->lines->map(static fn ($line): array => ['id' => (int) $line->getKey(), 'row_number' => (int) $line->row_number,
+                        'date' => $line->transaction_date->toDateString(), 'reference' => $line->reference, 'direction' => $line->direction,
+                        'amount' => (string) $line->amount, 'currency' => $line->currency, 'match_status' => $line->match_status,
+                        'suggested_payment_id' => $line->suggested_payment_id === null ? null : (int) $line->suggested_payment_id,
+                        'suggested_refund_id' => $line->suggested_refund_id === null ? null : (int) $line->suggested_refund_id])->all(),
+                ])->all(),
+            'reconciliation_permissions' => [
+                'manage' => $membership->hasPermission('billing.reconciliation.manage'),
+                'review' => $membership->hasPermission('billing.reconciliation.review'),
+            ],
             'payment_totals' => $paymentTotals->map(static fn ($row): array => [
                 'method' => $row->method, 'status' => $row->status, 'currency' => $row->currency,
                 'record_count' => (int) $row->record_count, 'amount' => BillingMoney::normalizeDecimal((string) $row->amount_total),
@@ -168,6 +192,56 @@ final class BillingPaymentController extends Controller
             ]),
             'export_url' => route('tenant.billing.reconciliation.csv', [$tenant, ...$filters]),
         ]);
+    }
+
+    public function bankStatementTemplate(Tenant $tenant): HttpResponse
+    {
+        return response("transaction_date,reference,description,direction,amount,currency\n2026-01-31,BANK-REFERENCE,Sample deposit,credit,100.00,USD\n", 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8', 'Content-Disposition' => 'attachment; filename=bank-statement-template.csv', 'Cache-Control' => 'private, no-store',
+        ]);
+    }
+
+    public function createBankAccount(Tenant $tenant, Request $request, BillingStatementReconciliation $service): RedirectResponse
+    {
+        $data = $request->validate(['account_code' => ['required', 'string', 'max:32', 'regex:/^[A-Za-z0-9_-]+$/'],
+            'display_name' => ['required', 'string', 'max:120'], 'currency' => ['required', 'string', 'size:3', 'regex:/^[A-Za-z]{3}$/'],
+            'campus_id' => ['nullable', 'integer', 'min:1']]);
+        $service->createAccount($data, $request->user());
+
+        return back()->with('status', 'Bank account configuration saved for reconciliation.');
+    }
+
+    public function importBankStatement(Tenant $tenant, Request $request, BillingStatementReconciliation $service): RedirectResponse
+    {
+        $data = $request->validate(['bank_account_id' => ['required', 'integer', 'min:1'], 'statement' => ['required', 'file', 'mimes:csv,txt', 'max:5120']]);
+        $service->import(BillingBankAccount::query()->findOrFail((int) $data['bank_account_id']), $data['statement'], $request->user());
+
+        return back()->with('status', 'Statement imported into an open reconciliation batch. Matches are suggestions only and do not verify payments.');
+    }
+
+    public function matchStatementLine(Tenant $tenant, int $lineId, Request $request, BillingStatementReconciliation $service): RedirectResponse
+    {
+        $data = $request->validate(['payment_id' => ['nullable', 'integer', 'min:1', 'required_without:refund_id'],
+            'refund_id' => ['nullable', 'integer', 'min:1', 'required_without:payment_id']]);
+        $service->matchLine($lineId, isset($data['payment_id']) ? (int) $data['payment_id'] : null,
+            isset($data['refund_id']) ? (int) $data['refund_id'] : null, $request->user());
+
+        return back()->with('status', 'Statement line matched to the exact internal reference, amount and currency. Payment state was not changed.');
+    }
+
+    public function excludeStatementLine(Tenant $tenant, int $lineId, Request $request, BillingStatementReconciliation $service): RedirectResponse
+    {
+        $data = $request->validate(['reason' => ['required', 'string', 'min:5', 'max:500']]);
+        $service->excludeLine($lineId, $data['reason'], $request->user());
+
+        return back()->with('status', 'Statement line excluded with an audited reason.');
+    }
+
+    public function closeStatementBatch(Tenant $tenant, int $batchId, Request $request, BillingStatementReconciliation $service): RedirectResponse
+    {
+        $service->closeBatch($batchId, $request->user());
+
+        return back()->with('status', 'Reconciliation batch closed.');
     }
 
     public function exportReconciliation(Tenant $tenant, Request $request, TenantContext $context, AuditRecorder $audit): StreamedResponse

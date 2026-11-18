@@ -1,4 +1,4 @@
-import { Link } from '@inertiajs/react';
+import { Link, router, useForm } from '@inertiajs/react';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
 import { WorkspaceLayout } from '@/layouts/workspace-layout';
@@ -25,6 +25,113 @@ type Refund = {
     payout_reference: string | null;
     executed_at: string | null;
 };
+type StatementLine = {
+    id: number;
+    row_number: number;
+    date: string;
+    reference: string;
+    direction: 'credit' | 'debit';
+    amount: string;
+    currency: string;
+    match_status: string;
+    suggested_payment_id: number | null;
+    suggested_refund_id: number | null;
+};
+type StatementBatch = {
+    id: number;
+    number: string;
+    account: string;
+    currency: string;
+    period_start: string;
+    period_end: string;
+    status: string;
+    line_count: number;
+    lines: StatementLine[];
+};
+
+const field = 'border-border bg-canvas text-text-primary mt-1 w-full rounded-lg border p-2';
+const button = 'bg-brand rounded-lg px-3 py-2 font-medium text-white disabled:opacity-50';
+
+function StatementLineReview({ line, base, open }: { line: StatementLine; base: string; open: boolean }) {
+    const match = useForm({
+        payment_id: line.suggested_payment_id?.toString() ?? '',
+        refund_id: line.suggested_refund_id?.toString() ?? '',
+    });
+    const exclusion = useForm({ reason: '' });
+    if (!open || ['matched', 'excluded'].includes(line.match_status)) return null;
+    return (
+        <div className="flex min-w-64 flex-wrap items-end gap-2">
+            <form
+                className="flex flex-wrap items-end gap-2"
+                onSubmit={(event) => {
+                    event.preventDefault();
+                    match.post(`${base}/reconciliation/lines/${line.id}/match`);
+                }}
+            >
+                {line.direction === 'credit' ? (
+                    <label className="text-xs">
+                        Payment ID
+                        <input
+                            aria-label={`Payment record ID for statement row ${line.row_number}`}
+                            className={field}
+                            required
+                            type="number"
+                            min="1"
+                            value={match.data.payment_id}
+                            onChange={(e) => match.setData({ payment_id: e.target.value, refund_id: '' })}
+                        />
+                    </label>
+                ) : (
+                    <label className="text-xs">
+                        Executed refund ID
+                        <input
+                            aria-label={`Refund record ID for statement row ${line.row_number}`}
+                            className={field}
+                            required
+                            type="number"
+                            min="1"
+                            value={match.data.refund_id}
+                            onChange={(e) => match.setData({ refund_id: e.target.value, payment_id: '' })}
+                        />
+                    </label>
+                )}
+                <button className={button} disabled={match.processing}>
+                    Confirm exact match
+                </button>
+            </form>
+            <form
+                className="flex flex-wrap items-end gap-2"
+                onSubmit={(event) => {
+                    event.preventDefault();
+                    exclusion.post(`${base}/reconciliation/lines/${line.id}/exclude`);
+                }}
+            >
+                <label className="text-xs">
+                    Exclusion reason
+                    <input
+                        aria-label={`Exclusion reason for statement row ${line.row_number}`}
+                        className={field}
+                        required
+                        minLength={5}
+                        value={exclusion.data.reason}
+                        onChange={(e) => exclusion.setData('reason', e.target.value)}
+                    />
+                </label>
+                <button
+                    className="border-border rounded-lg border px-3 py-2 text-sm"
+                    disabled={exclusion.processing}
+                >
+                    Exclude
+                </button>
+            </form>
+            {(Object.values(match.errors).length > 0 || Object.values(exclusion.errors).length > 0) && (
+                <p role="alert" className="w-full text-sm text-red-700">
+                    {Object.values(match.errors).concat(Object.values(exclusion.errors)).join(' ')}
+                </p>
+            )}
+        </div>
+    );
+}
 
 export default function BillingReconciliation({
     tenant,
@@ -35,6 +142,9 @@ export default function BillingReconciliation({
     payments,
     refunds,
     export_url,
+    bank_accounts,
+    statement_batches,
+    reconciliation_permissions,
 }: {
     tenant: { slug: string };
     filters: { from: string; to: string; campus_id: number | null };
@@ -51,8 +161,22 @@ export default function BillingReconciliation({
     payments: Page<Payment>;
     refunds: Page<Refund>;
     export_url: string;
+    bank_accounts: {
+        id: number;
+        account_code: string;
+        display_name: string;
+        currency: string;
+        campus_id: number | null;
+    }[];
+    statement_batches: StatementBatch[];
+    reconciliation_permissions: { manage: boolean; review: boolean };
 }) {
     const base = `/t/${tenant.slug}/billing`;
+    const accountForm = useForm({ account_code: '', display_name: '', currency: 'USD', campus_id: '' });
+    const statementForm = useForm<{ bank_account_id: string; statement: File | null }>({
+        bank_account_id: '',
+        statement: null,
+    });
     return (
         <WorkspaceLayout area="tenant" title="Collection reconciliation">
             <PageHeader
@@ -69,7 +193,204 @@ export default function BillingReconciliation({
                 <a href={export_url} className="text-brand underline">
                     Export CSV
                 </a>
+                {reconciliation_permissions.manage && (
+                    <a href={`${base}/reconciliation/template.csv`} className="text-brand underline">
+                        Download statement CSV template
+                    </a>
+                )}
             </div>
+
+            {reconciliation_permissions.manage && (
+                <section className="bg-surface border-border mb-6 rounded-xl border p-4">
+                    <h2 className="text-text-primary text-lg font-semibold">Bank statement import</h2>
+                    <p className="text-text-secondary mt-1 text-sm">
+                        Use the provided CSV template. Imports create a review batch and exact-match
+                        suggestions only. They never confirm a pending payment or create collections.
+                    </p>
+                    <form
+                        className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            statementForm.post(`${base}/reconciliation/statements`, { forceFormData: true });
+                        }}
+                    >
+                        <label className="text-text-secondary text-sm">
+                            Account
+                            <select
+                                className={field}
+                                required
+                                value={statementForm.data.bank_account_id}
+                                onChange={(e) => statementForm.setData('bank_account_id', e.target.value)}
+                            >
+                                <option value="">Select account</option>
+                                {bank_accounts.map((account) => (
+                                    <option key={account.id} value={account.id}>
+                                        {account.display_name} · {account.currency}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            CSV statement
+                            <input
+                                className={field}
+                                required
+                                type="file"
+                                accept=".csv,text/csv"
+                                onChange={(e) =>
+                                    statementForm.setData('statement', e.target.files?.[0] ?? null)
+                                }
+                            />
+                        </label>
+                        <button className={`${button} self-end`} disabled={statementForm.processing}>
+                            Import for review
+                        </button>
+                    </form>
+                    <form
+                        className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            accountForm.post(`${base}/reconciliation/accounts`);
+                        }}
+                    >
+                        <label className="text-text-secondary text-sm">
+                            Account code
+                            <input
+                                className={field}
+                                required
+                                value={accountForm.data.account_code}
+                                onChange={(e) => accountForm.setData('account_code', e.target.value)}
+                            />
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Display name
+                            <input
+                                className={field}
+                                required
+                                value={accountForm.data.display_name}
+                                onChange={(e) => accountForm.setData('display_name', e.target.value)}
+                            />
+                        </label>
+                        <label className="text-text-secondary text-sm">
+                            Currency
+                            <input
+                                className={field}
+                                required
+                                maxLength={3}
+                                value={accountForm.data.currency}
+                                onChange={(e) =>
+                                    accountForm.setData('currency', e.target.value.toUpperCase())
+                                }
+                            />
+                        </label>
+                        {campuses.length > 0 && (
+                            <label className="text-text-secondary text-sm">
+                                Campus scope
+                                <select
+                                    className={field}
+                                    value={accountForm.data.campus_id}
+                                    onChange={(e) => accountForm.setData('campus_id', e.target.value)}
+                                >
+                                    <option value="">Institution-wide</option>
+                                    {campuses.map((campus) => (
+                                        <option key={campus.id} value={campus.id}>
+                                            {campus.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                        )}
+                        <button className={`${button} self-end`} disabled={accountForm.processing}>
+                            Add bank account
+                        </button>
+                    </form>
+                    {(Object.values(accountForm.errors).length > 0 ||
+                        Object.values(statementForm.errors).length > 0) && (
+                        <p role="alert" className="mt-3 text-sm text-red-700">
+                            {Object.values(accountForm.errors)
+                                .concat(Object.values(statementForm.errors))
+                                .join(' ')}
+                        </p>
+                    )}
+                </section>
+            )}
+
+            {reconciliation_permissions.review && (
+                <section className="bg-surface border-border mb-6 rounded-xl border p-4">
+                    <h2 className="text-text-primary text-lg font-semibold">Imported statement batches</h2>
+                    {statement_batches.length === 0 ? (
+                        <p className="text-text-secondary mt-2 text-sm">
+                            No CSV statement batches have been imported.
+                        </p>
+                    ) : (
+                        <ul className="mt-3 space-y-4">
+                            {statement_batches.map((batch) => (
+                                <li key={batch.id} className="border-border rounded-lg border p-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div>
+                                            <strong>{batch.number}</strong> · {batch.account} ·{' '}
+                                            {batch.currency} · {batch.period_start} to {batch.period_end} ·{' '}
+                                            {batch.status} · {batch.line_count} rows
+                                        </div>
+                                        {batch.status === 'review' && (
+                                            <button
+                                                className={button}
+                                                onClick={() =>
+                                                    window.confirm('Close this reviewed batch?') &&
+                                                    router.post(
+                                                        `${base}/reconciliation/batches/${batch.id}/close`,
+                                                    )
+                                                }
+                                            >
+                                                Close batch
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="mt-3 overflow-x-auto">
+                                        <table className="w-full min-w-[760px] text-left text-sm">
+                                            <thead>
+                                                <tr>
+                                                    <th className="p-2">Row</th>
+                                                    <th className="p-2">Date</th>
+                                                    <th className="p-2">Reference</th>
+                                                    <th className="p-2">Direction</th>
+                                                    <th className="p-2">Amount</th>
+                                                    <th className="p-2">Status</th>
+                                                    <th className="p-2">Review action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {batch.lines.map((line) => (
+                                                    <tr
+                                                        className="border-border border-t align-top"
+                                                        key={line.id}
+                                                    >
+                                                        <td className="p-2">{line.row_number}</td>
+                                                        <td className="p-2">{line.date}</td>
+                                                        <td className="p-2">{line.reference}</td>
+                                                        <td className="p-2">{line.direction}</td>
+                                                        <td className="p-2">
+                                                            {line.currency} {line.amount}
+                                                        </td>
+                                                        <td className="p-2">{line.match_status}</td>
+                                                        <td className="p-2">
+                                                            <StatementLineReview
+                                                                line={line}
+                                                                base={base}
+                                                                open={batch.status === 'review'}
+                                                            />
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </section>
+            )}
 
             <form
                 method="get"

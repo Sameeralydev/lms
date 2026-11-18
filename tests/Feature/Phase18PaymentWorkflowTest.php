@@ -16,6 +16,7 @@ use App\Models\SisStudentGuardian;
 use App\Models\Tenant;
 use App\Models\TenantMembership;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Tests\Support\GuardedRefreshDatabase;
@@ -289,6 +290,42 @@ final class Phase18PaymentWorkflowTest extends TestCase
         self::assertStringContainsString('RECON-CASH-18007', $export->streamedContent());
         self::assertStringContainsString('RECON-BANK-18007', $export->streamedContent());
         $this->assertDatabaseHas('audit_events', ['tenant_id' => $tenant->getKey(), 'event_type' => 'billing.collection_reconciliation.exported']);
+    }
+
+    public function test_statement_csv_import_suggests_exact_matches_but_never_confirms_payment_and_closes_with_audit(): void
+    {
+        [$tenant, $owner, $membership] = $this->provision('Statement Review Academy');
+        $student = $this->student($tenant, $membership, 'STU-18040');
+        $base = "/t/{$tenant->slug}/billing";
+        $payments = $base.'/payments';
+        $this->actingAs($owner)->post($payments, [
+            'student_id' => $student->getKey(), 'method' => 'bank_transfer', 'amount' => '80.00', 'currency' => 'USD',
+            'reference' => 'STMT-REFERENCE-40', 'idempotency_key' => 'stmt-'.Str::uuid(), 'allocations' => [],
+        ])->assertSessionHasNoErrors();
+        $paymentId = (int) \DB::table('billing_payments')->where('tenant_id', $tenant->getKey())->value('id');
+        $this->actingAs($owner)->post($base.'/reconciliation/accounts', [
+            'account_code' => 'OPERATING-USD', 'display_name' => 'Operating USD', 'currency' => 'USD', 'campus_id' => '',
+        ])->assertSessionHasNoErrors();
+        $accountId = (int) \DB::table('billing_bank_accounts')->where('tenant_id', $tenant->getKey())->value('id');
+        $csv = "transaction_date,reference,description,direction,amount,currency\n2026-11-18,STMT-REFERENCE-40,Transfer,credit,80.00,USD\n2026-11-18,STMT-REFERENCE-40,Duplicate memo,credit,80.00,USD\n";
+        $this->actingAs($owner)->post($base.'/reconciliation/statements', ['bank_account_id' => $accountId, 'statement' => UploadedFile::fake()->createWithContent('statement.csv', $csv)])->assertSessionHasNoErrors();
+        $batchId = (int) \DB::table('billing_reconciliation_batches')->where('tenant_id', $tenant->getKey())->value('id');
+        $lines = \DB::table('billing_reconciliation_lines')->where('tenant_id', $tenant->getKey())->orderBy('row_number')->get();
+        self::assertCount(2, $lines);
+        $lineId = (int) $lines[0]->id;
+        self::assertSame('suggested', \DB::table('billing_reconciliation_lines')->where('id', $lineId)->value('match_status'));
+        self::assertSame('unmatched', $lines[1]->match_status, 'One payment cannot be suggested against two rows in the same batch.');
+        self::assertSame('pending_verification', \DB::table('billing_payments')->where('id', $paymentId)->value('status'));
+        $this->actingAs($owner)->post($base.'/reconciliation/statements', ['bank_account_id' => $accountId, 'statement' => UploadedFile::fake()->createWithContent('statement.csv', $csv)])->assertStatus(409);
+        $this->actingAs($owner)->post("{$base}/reconciliation/lines/{$lineId}/match", ['payment_id' => $paymentId])->assertSessionHasNoErrors();
+        $this->actingAs($owner)->post("{$base}/reconciliation/lines/{$lines[1]->id}/exclude", ['reason' => 'Duplicate statement row'])->assertSessionHasNoErrors();
+        $this->actingAs($owner)->post("{$base}/reconciliation/batches/{$batchId}/close")->assertSessionHasNoErrors();
+        self::assertSame('closed', \DB::table('billing_reconciliation_batches')->where('id', $batchId)->value('status'));
+        self::assertSame('matched', \DB::table('billing_reconciliation_lines')->where('id', $lineId)->value('match_status'));
+        self::assertSame('pending_verification', \DB::table('billing_payments')->where('id', $paymentId)->value('status'), 'Bank statement matching is not payment verification.');
+        $this->assertDatabaseHas('audit_events', ['tenant_id' => $tenant->getKey(), 'event_type' => 'billing.reconciliation.imported']);
+        $this->assertDatabaseHas('audit_events', ['tenant_id' => $tenant->getKey(), 'event_type' => 'billing.reconciliation.line_matched']);
+        $this->assertDatabaseHas('audit_events', ['tenant_id' => $tenant->getKey(), 'event_type' => 'billing.reconciliation.closed']);
     }
 
     /** @return array{Tenant, User, TenantMembership} */
