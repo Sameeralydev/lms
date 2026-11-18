@@ -93,6 +93,8 @@ class DashboardController extends Controller
         } elseif ($can('hr.staff.view-own')) {
             $cards[] = ['label' => 'My staff profile', 'href' => '/t/'.$tenant->slug.'/hr/staff', 'detail' => 'View your own employment record.'];
         }
+        $addCard('communications.announcements.view', 'Announcements', 'communications/announcements', 'Institution updates published for your roles and campus.');
+        $addCard('communications.messages.view', 'Messages', 'communications/messages', 'Private conversations with active members in your institution scope.');
         $addCard('audit.view', 'Audit history', 'audit', 'Administrative events available to your role.');
 
         $metrics = [];

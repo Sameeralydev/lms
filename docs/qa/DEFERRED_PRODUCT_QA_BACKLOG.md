@@ -1,4 +1,4 @@
-# Deferred product QA backlog
+ï»¿# Deferred product QA backlog
 
 Items in this file are **QA PENDING** unless evidence is explicitly recorded after execution. Deferred items are reserved for final product-wide verification and do not represent passed checks.
 
@@ -12,15 +12,15 @@ Items in this file are **QA PENDING** unless evidence is explicitly recorded aft
 - **QA PENDING** â€” Product-wide regression and performance review of catalog queries and large circulation histories.
 - **QA PENDING** â€” Notifications, email/SMS/push delivery, digital resource licensing/security, and any institution-specific fine/acquisition workflow if approved for a later contract.
 
-## Phase 21 — SaaS and White-label Management
+## Phase 21 ï¿½ SaaS and White-label Management
 
-- **QA PENDING** — Apply the additive plan/subscription migration only after independently verifying an isolated, authorized Developer B database, its server, port, schema, and current records. Never use destructive migration commands.
-- **QA PENDING** — Run authenticated platform browser workflows for plan creation/editing, assignment, pause/resume, plan-version immutability, tenant detail display, pagination, and platform permission denial.
-- **QA PENDING** — Verify each configured feature route is blocked for a paused or non-entitled assignment and that legacy tenants without an assignment retain access; verify tenant membership and permission middleware still apply.
-- **QA PENDING** — Run concurrent plan assignment and plan edit/assignment checks on MySQL and confirm assignment history and audit events stay consistent.
-- **QA PENDING** — Complete the cross-tenant/campus adversarial matrix for all mapped module routes and confirm no route alias or custom-domain path bypasses entitlement checks.
-- **QA PENDING** — Reconcile any later approved Phase 21 pricing, quotas, billing, deployment-provisioning, or data-portability specification before implementing those unsupported commercial workflows.
-- **QA PENDING** — Verify domain TXT challenge, primary custom-domain routing, branding image delivery, display-name/logo rendering, and all six themes on the production host configuration.
+- **QA PENDING** ï¿½ Apply the additive plan/subscription migration only after independently verifying an isolated, authorized Developer B database, its server, port, schema, and current records. Never use destructive migration commands.
+- **QA PENDING** ï¿½ Run authenticated platform browser workflows for plan creation/editing, assignment, pause/resume, plan-version immutability, tenant detail display, pagination, and platform permission denial.
+- **QA PENDING** ï¿½ Verify each configured feature route is blocked for a paused or non-entitled assignment and that legacy tenants without an assignment retain access; verify tenant membership and permission middleware still apply.
+- **QA PENDING** ï¿½ Run concurrent plan assignment and plan edit/assignment checks on MySQL and confirm assignment history and audit events stay consistent.
+- **QA PENDING** ï¿½ Complete the cross-tenant/campus adversarial matrix for all mapped module routes and confirm no route alias or custom-domain path bypasses entitlement checks.
+- **QA PENDING** ï¿½ Reconcile any later approved Phase 21 pricing, quotas, billing, deployment-provisioning, or data-portability specification before implementing those unsupported commercial workflows.
+- **QA PENDING** ï¿½ Verify domain TXT challenge, primary custom-domain routing, branding image delivery, display-name/logo rendering, and all six themes on the production host configuration.
 - **QA PENDING** - Run concurrent campus and staff creation/reactivation against configured limits on MySQL; confirm tenant row locking prevents over-allocation and historical records remain intact after plan changes.
 
 ## Phase 22 - Standards and Integrations
@@ -45,3 +45,13 @@ Items in this file are **QA PENDING** unless evidence is explicitly recorded aft
 - **QA PENDING** - Complete secure upload and authorization verification for each document workflow, including EICAR/ClamAV scanner behavior, quarantine transitions, stale signatures, unavailable scanner, and private download boundaries. Do not disable fail-closed behavior.
 - **QA PENDING** - Review CSP, secure cookies, trusted proxies/hosts, HTTPS/HSTS, secret management and deployment configuration in each real deployment environment; local configuration review is not a production security certification.
 - **QA PENDING** - Complete dependency vulnerability review, penetration testing, load/stress testing, complete PHPUnit/browser regression, accessibility certification, queue/cache outage testing, and disaster-recovery restore drills.
+
+## Phase 16 communications
+
+- **QA PENDING** â€” Review and execute the additive announcement migration only against an independently verified, isolated Developer B schema.
+- **QA PENDING** â€” Verify tenant, campus, role, author and manager authorization for announcement reads, drafts, scheduled publication, archive, edits and read receipts, including forged identifiers and cross-tenant requests.
+- **QA PENDING** â€” Verify recipient resolution, active membership, participant-only thread access, campus boundaries, unread state, and message/inbox transaction consistency under authenticated journeys.
+- **QA PENDING** â€” Verify read-receipt idempotency, inbox pagination, and announcement/message journeys across supported themes and responsive layouts.
+- **QA PENDING** â€” Verify scheduled publication command locking, retry/idempotency, audience selection, audit event creation, and due-time notification delivery on MySQL.
+- **QA PENDING** â€” Locate and reconcile the authoritative Phase 16 acceptance criteria; the repository has no Phase 16 acceptance matrix. Preference management and external delivery are not implemented because no approved preference/provider contract was found.
+- **QA PENDING** â€” Verify approved provider delivery only if credentials and explicit authorization are available; no external messages were sent during development.

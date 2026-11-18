@@ -33,6 +33,9 @@ use App\Http\Controllers\Workspace\AttendanceController;
 use App\Http\Controllers\Workspace\AuditController as WorkspaceAuditController;
 use App\Http\Controllers\Workspace\BrandingController;
 use App\Http\Controllers\Workspace\CampusController;
+use App\Http\Controllers\Workspace\CommunicationsAnnouncementController;
+use App\Http\Controllers\Workspace\CommunicationsMessageController;
+use App\Http\Controllers\Workspace\CommunicationsNotificationController;
 use App\Http\Controllers\Workspace\CourseDeliveryAnalyticsController;
 use App\Http\Controllers\Workspace\CourseDeliveryController;
 use App\Http\Controllers\Workspace\CourseDeliveryLiveSessionController;
@@ -55,9 +58,9 @@ use App\Http\Controllers\Workspace\ExaminationSeatingController;
 use App\Http\Controllers\Workspace\ExaminationStaffController;
 use App\Http\Controllers\Workspace\GradebookController;
 use App\Http\Controllers\Workspace\HrStaffController;
-use App\Http\Controllers\Workspace\LibraryController;
 use App\Http\Controllers\Workspace\InstitutionController;
 use App\Http\Controllers\Workspace\IntegrationController;
+use App\Http\Controllers\Workspace\LibraryController;
 use App\Http\Controllers\Workspace\MembershipController;
 use App\Http\Controllers\Workspace\OfficialAcademicRecordController;
 use App\Http\Controllers\Workspace\RoleController;
@@ -305,6 +308,22 @@ Route::middleware('auth')->group(function (): void {
         Route::prefix('assignment-notifications')->name('assignment-notifications.')->middleware('tenant.permission:assignments.view')->group(function (): void {
             Route::get('/', [AssignmentNotificationController::class, 'index'])->name('index');
             Route::post('/{notificationId}/read', [AssignmentNotificationController::class, 'markRead'])->whereNumber('notificationId')->name('read');
+        });
+        Route::prefix('communications/announcements')->name('communications.announcements.')->middleware('tenant.permission:communications.announcements.view')->group(function (): void {
+            Route::get('/', [CommunicationsAnnouncementController::class, 'index'])->name('index');
+            Route::post('/', [CommunicationsAnnouncementController::class, 'store'])->middleware('tenant.permission:communications.announcements.manage')->name('store');
+            Route::put('/{announcementId}', [CommunicationsAnnouncementController::class, 'update'])->middleware('tenant.permission:communications.announcements.manage')->whereNumber('announcementId')->name('update');
+            Route::patch('/{announcementId}/archive', [CommunicationsAnnouncementController::class, 'archive'])->middleware('tenant.permission:communications.announcements.manage')->whereNumber('announcementId')->name('archive');
+            Route::post('/{announcementId}/read', [CommunicationsAnnouncementController::class, 'markRead'])->whereNumber('announcementId')->name('read');
+        });
+        Route::prefix('communications/messages')->name('communications.messages.')->middleware('tenant.permission:communications.messages.view')->group(function (): void {
+            Route::get('/', [CommunicationsMessageController::class, 'index'])->name('index');
+            Route::post('/', [CommunicationsMessageController::class, 'start'])->middleware('tenant.permission:communications.messages.send')->name('start');
+            Route::post('/{conversationId}', [CommunicationsMessageController::class, 'reply'])->middleware('tenant.permission:communications.messages.send')->whereNumber('conversationId')->name('reply');
+        });
+        Route::prefix('communications/notifications')->name('communications.notifications.')->middleware('tenant.permission:communications.announcements.view')->group(function (): void {
+            Route::get('/', [CommunicationsNotificationController::class, 'index'])->name('index');
+            Route::post('/{notificationId}/read', [CommunicationsNotificationController::class, 'markRead'])->whereNumber('notificationId')->name('read');
         });
         Route::prefix('attendance')->name('attendance.')->group(function (): void {
             Route::get('/', [AttendanceController::class, 'index'])->middleware('tenant.permission:attendance.view')->name('index');
