@@ -181,6 +181,81 @@ final class Phase17BillingFoundationTest extends TestCase
         $this->assertDatabaseHas('audit_events', ['tenant_id' => $tenant->getKey(), 'event_type' => 'billing.invoice.cancelled']);
     }
 
+    public function test_fee_assignment_concession_installments_adjustment_and_ledger_workflow_is_audited(): void
+    {
+        [$tenant, $owner, $ownerMembership] = $this->provision('Billing Lifecycle Academy');
+        $student = $this->student($tenant, $ownerMembership, 'STU-17006');
+        $base = "/t/{$tenant->slug}/billing";
+        $this->actingAs($owner)->get("{$base}/lifecycle")->assertOk()->assertInertia(fn ($page) => $page
+            ->component('workspace/billing/lifecycle')->where('permissions.assign', true)->has('students', 1));
+
+        $this->actingAs($owner)->post("{$base}/fee-heads", ['code' => 'TUITION', 'name' => 'Tuition', 'category' => 'tuition'])->assertSessionHasNoErrors();
+        $headId = (int) \DB::table('billing_fee_heads')->where('tenant_id', $tenant->getKey())->value('id');
+        $this->actingAs($owner)->post("{$base}/structures", [
+            'code' => 'LIFECYCLE-2026', 'name' => 'Lifecycle tuition', 'currency' => 'USD', 'frequency' => 'monthly', 'effective_from' => '2026-01-01',
+            'items' => [['fee_head_id' => $headId, 'unit_amount' => '200.00', 'quantity' => '1']],
+        ])->assertSessionHasNoErrors();
+        $structureId = (int) \DB::table('billing_fee_structures')->where('tenant_id', $tenant->getKey())->value('id');
+        $this->actingAs($owner)->post("{$base}/structures/{$structureId}/activate")->assertSessionHasNoErrors();
+
+        $assignmentKey = (string) Str::uuid();
+        $this->actingAs($owner)->post("{$base}/assignments", [
+            'student_id' => $student->getKey(), 'fee_structure_id' => $structureId,
+            'period_start' => '2026-11-01', 'period_end' => '2026-11-30', 'effective_from' => '2026-11-01',
+            'idempotency_key' => $assignmentKey,
+        ])->assertSessionHasNoErrors();
+        $assignmentId = (int) \DB::table('billing_fee_assignments')->where('tenant_id', $tenant->getKey())->value('id');
+
+        $this->actingAs($owner)->post("{$base}/concessions", [
+            'student_id' => $student->getKey(), 'code' => 'NEED-BASED-26', 'name' => 'Need-based support', 'kind' => 'percentage',
+            'value' => '10.00', 'effective_from' => '2026-11-01', 'effective_until' => '2026-11-30', 'reason' => 'Approved synthetic test concession.',
+        ])->assertSessionHasNoErrors();
+        $concessionId = (int) \DB::table('billing_concessions')->where('tenant_id', $tenant->getKey())->value('id');
+
+        $reviewer = User::factory()->create();
+        $this->member($tenant, $ownerMembership, $reviewer, 'finance.manager');
+        $poster = User::factory()->create();
+        $this->member($tenant, $ownerMembership, $poster, 'finance.manager');
+        $this->actingAs($reviewer)->post("{$base}/concessions/{$concessionId}/review", ['decision' => 'approve', 'note' => 'Eligibility verified.'])->assertSessionHasNoErrors();
+
+        $this->actingAs($owner)->post("{$base}/invoices", [
+            'student_id' => $student->getKey(), 'fee_structure_id' => $structureId, 'fee_assignment_id' => $assignmentId,
+            'concession_id' => $concessionId, 'period_start' => '2026-11-01', 'period_end' => '2026-11-30',
+            'due_on' => '2026-11-30', 'idempotency_key' => (string) Str::uuid(),
+        ])->assertSessionHasNoErrors();
+        $invoice = BillingInvoice::query()->where('tenant_id', $tenant->getKey())->firstOrFail();
+        self::assertSame('200.00', (string) $invoice->subtotal);
+        self::assertSame('20.00', (string) $invoice->discount_total);
+        self::assertSame('180.00', (string) $invoice->total);
+        self::assertSame(1, \DB::table('billing_concession_applications')->where('invoice_id', $invoice->getKey())->count());
+
+        $this->actingAs($owner)->post("{$base}/invoices/{$invoice->getKey()}/installments", ['installments' => [
+            ['due_on' => '2026-11-15', 'amount' => '100.00'], ['due_on' => '2026-11-30', 'amount' => '80.00'],
+        ]])->assertSessionHasNoErrors();
+        $planId = (int) \DB::table('billing_installment_plans')->where('invoice_id', $invoice->getKey())->value('id');
+        $this->actingAs($owner)->post("{$base}/installment-plans/{$planId}/publish")->assertSessionHasNoErrors();
+        self::assertSame('published', \DB::table('billing_installment_plans')->where('id', $planId)->value('status'));
+
+        $adjustmentKey = (string) Str::uuid();
+        $this->actingAs($owner)->post("{$base}/adjustments", [
+            'invoice_id' => $invoice->getKey(), 'kind' => 'credit', 'amount' => '20.00', 'currency' => 'USD',
+            'idempotency_key' => $adjustmentKey, 'reason' => 'Approved billing correction.',
+        ])->assertSessionHasNoErrors();
+        $adjustmentId = (int) \DB::table('billing_adjustments')->where('idempotency_key', $adjustmentKey)->value('id');
+        $this->actingAs($reviewer)->post("{$base}/adjustments/{$adjustmentId}/review", ['decision' => 'approve', 'note' => 'Correction independently reviewed.'])->assertSessionHasNoErrors();
+        $this->actingAs($poster)->post("{$base}/adjustments/{$adjustmentId}/post")->assertSessionHasNoErrors();
+
+        $invoice->refresh();
+        self::assertSame('160.00', (string) $invoice->adjusted_total);
+        self::assertSame('160.00', (string) $invoice->outstanding_amount);
+        self::assertSame('posted', \DB::table('billing_adjustments')->where('id', $adjustmentId)->value('status'));
+        self::assertSame(3, \DB::table('billing_adjustment_events')->where('adjustment_id', $adjustmentId)->count());
+        self::assertSame(2, \DB::table('billing_concession_events')->where('concession_id', $concessionId)->count());
+        $this->assertDatabaseHas('audit_events', ['tenant_id' => $tenant->getKey(), 'event_type' => 'billing.adjustment.posted']);
+        $this->actingAs($owner)->get("{$base}/ledger/{$student->getKey()}")->assertOk()->assertInertia(fn ($page) => $page
+            ->component('workspace/billing/ledger')->where('currency_totals.0.balance', '160.00')->has('entries', 2));
+    }
+
     /** @return array{Tenant, User, TenantMembership} */
     private function provision(string $name): array
     {

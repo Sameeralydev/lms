@@ -19,6 +19,12 @@ class BillingPaymentRefundAllocation extends AcademicRecord
         return ['amount' => 'decimal:2', 'reversed_at' => 'immutable_datetime'];
     }
 
+    /** @return BelongsTo<BillingInvoice, $this> */
+    public function invoice(): BelongsTo
+    {
+        return $this->belongsTo(BillingInvoice::class, 'invoice_id');
+    }
+
     /** @return BelongsTo<BillingPaymentRefund, $this> */
     public function refund(): BelongsTo
     {

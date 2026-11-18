@@ -26,6 +26,12 @@ class BillingPaymentAllocation extends AcademicRecord
         return $this->belongsTo(BillingInvoice::class, 'invoice_id');
     }
 
+    /** @return BelongsTo<BillingPayment, $this> */
+    public function payment(): BelongsTo
+    {
+        return $this->belongsTo(BillingPayment::class, 'payment_id');
+    }
+
     /** @return HasMany<BillingPaymentRefundAllocation, $this> */
     public function refundAllocations(): HasMany
     {

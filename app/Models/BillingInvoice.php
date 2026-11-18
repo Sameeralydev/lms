@@ -37,7 +37,8 @@ class BillingInvoice extends AcademicRecord
         return [
             'period_start' => 'date', 'period_end' => 'date', 'due_on' => 'date',
             'subtotal' => 'decimal:2', 'discount_total' => 'decimal:2', 'total' => 'decimal:2',
-            'paid_amount' => 'decimal:2', 'outstanding_amount' => 'decimal:2',
+            'paid_amount' => 'decimal:2', 'outstanding_amount' => 'decimal:2', 'adjusted_total' => 'decimal:2',
+            'concession_snapshot' => 'array',
             'issued_at' => 'immutable_datetime', 'cancelled_at' => 'immutable_datetime',
         ];
     }
@@ -58,5 +59,17 @@ class BillingInvoice extends AcademicRecord
     public function items(): HasMany
     {
         return $this->hasMany(BillingInvoiceItem::class, 'invoice_id')->orderBy('id');
+    }
+
+    /** @return BelongsTo<BillingFeeAssignment, $this> */
+    public function feeAssignment(): BelongsTo
+    {
+        return $this->belongsTo(BillingFeeAssignment::class, 'fee_assignment_id');
+    }
+
+    /** @return BelongsTo<BillingConcession, $this> */
+    public function concession(): BelongsTo
+    {
+        return $this->belongsTo(BillingConcession::class);
     }
 }

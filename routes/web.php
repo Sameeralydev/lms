@@ -31,6 +31,7 @@ use App\Http\Controllers\Workspace\AssignmentNotificationController;
 use App\Http\Controllers\Workspace\AttendanceController;
 use App\Http\Controllers\Workspace\AuditController as WorkspaceAuditController;
 use App\Http\Controllers\Workspace\BillingController;
+use App\Http\Controllers\Workspace\BillingLifecycleController;
 use App\Http\Controllers\Workspace\BillingPaymentController;
 use App\Http\Controllers\Workspace\BrandingController;
 use App\Http\Controllers\Workspace\CampusController;
@@ -125,6 +126,17 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/billing/my/payments/{paymentId}/receipt', [BillingPaymentController::class, 'myReceipt'])->middleware('tenant.permission:billing.portal.view-own')->whereNumber('paymentId')->name('billing.my.payments.receipt');
         Route::prefix('billing')->name('billing.')->middleware('tenant.permission:billing.view')->group(function (): void {
             Route::get('/', [BillingController::class, 'index'])->name('index');
+            Route::get('/lifecycle', [BillingLifecycleController::class, 'index'])->name('lifecycle');
+            Route::get('/ledger/{studentId}', [BillingLifecycleController::class, 'ledger'])->whereNumber('studentId')->middleware('tenant.permission:billing.ledger.view')->name('ledger');
+            Route::post('/assignments', [BillingLifecycleController::class, 'storeAssignment'])->middleware('tenant.permission:billing.assignments.manage')->name('assignments.store');
+            Route::post('/concessions', [BillingLifecycleController::class, 'storeConcession'])->middleware('tenant.permission:billing.concessions.manage')->name('concessions.store');
+            Route::post('/concessions/{concessionId}/review', [BillingLifecycleController::class, 'reviewConcession'])->whereNumber('concessionId')->middleware('tenant.permission:billing.concessions.approve')->name('concessions.review');
+            Route::post('/concessions/{concessionId}/revoke', [BillingLifecycleController::class, 'revokeConcession'])->whereNumber('concessionId')->middleware('tenant.permission:billing.concessions.manage')->name('concessions.revoke');
+            Route::post('/invoices/{invoiceId}/installments', [BillingLifecycleController::class, 'storeInstallments'])->whereNumber('invoiceId')->middleware('tenant.permission:billing.installments.manage')->name('installments.store');
+            Route::post('/installment-plans/{planId}/publish', [BillingLifecycleController::class, 'publishInstallments'])->whereNumber('planId')->middleware('tenant.permission:billing.installments.manage')->name('installments.publish');
+            Route::post('/adjustments', [BillingLifecycleController::class, 'storeAdjustment'])->middleware('tenant.permission:billing.adjustments.manage')->name('adjustments.store');
+            Route::post('/adjustments/{adjustmentId}/review', [BillingLifecycleController::class, 'reviewAdjustment'])->whereNumber('adjustmentId')->middleware('tenant.permission:billing.adjustments.approve')->name('adjustments.review');
+            Route::post('/adjustments/{adjustmentId}/post', [BillingLifecycleController::class, 'postAdjustment'])->whereNumber('adjustmentId')->middleware('tenant.permission:billing.adjustments.post')->name('adjustments.post');
             Route::get('/reports', [BillingController::class, 'reports'])->middleware('tenant.permission:billing.reports.view')->name('reports');
             Route::get('/reports.csv', [BillingController::class, 'exportReports'])->middleware('tenant.permission:billing.reports.view')->name('reports.csv');
             Route::post('/fee-heads', [BillingController::class, 'storeFeeHead'])->middleware('tenant.permission:billing.fees.manage')->name('fee-heads.store');

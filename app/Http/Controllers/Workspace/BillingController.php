@@ -73,6 +73,11 @@ final class BillingController extends Controller
                 'cancel_invoices' => $membership->hasPermission('billing.invoices.cancel'),
                 'view_reports' => $membership->hasPermission('billing.reports.view'),
                 'view_payments' => $membership->hasPermission('billing.payments.view'),
+                'view_lifecycle' => $membership->hasPermission('billing.assignments.manage')
+                    || $membership->hasPermission('billing.concessions.manage')
+                    || $membership->hasPermission('billing.installments.manage')
+                    || $membership->hasPermission('billing.adjustments.manage')
+                    || $membership->hasPermission('billing.ledger.view'),
             ],
         ]);
     }
@@ -352,8 +357,9 @@ final class BillingController extends Controller
             'student_id' => ['required', 'integer', 'min:1'], 'fee_structure_id' => ['required', 'integer', 'min:1'],
             'period_start' => ['required', 'date'], 'period_end' => ['required', 'date', 'after_or_equal:period_start'],
             'due_on' => ['required', 'date', 'after_or_equal:period_start'], 'idempotency_key' => ['required', 'string', 'min:16', 'max:80'],
+            'fee_assignment_id' => ['nullable', 'integer', 'min:1'], 'concession_id' => ['nullable', 'integer', 'min:1'],
         ]);
-        $invoice = $issuer->issue(['student_id' => (int) $data['student_id'], 'fee_structure_id' => (int) $data['fee_structure_id'], 'period_start' => $data['period_start'], 'period_end' => $data['period_end'], 'due_on' => $data['due_on'], 'idempotency_key' => $data['idempotency_key']], $request->user());
+        $invoice = $issuer->issue(['student_id' => (int) $data['student_id'], 'fee_structure_id' => (int) $data['fee_structure_id'], 'period_start' => $data['period_start'], 'period_end' => $data['period_end'], 'due_on' => $data['due_on'], 'idempotency_key' => $data['idempotency_key'], 'fee_assignment_id' => isset($data['fee_assignment_id']) ? (int) $data['fee_assignment_id'] : null, 'concession_id' => isset($data['concession_id']) ? (int) $data['concession_id'] : null], $request->user());
 
         return redirect()->route('tenant.billing.invoices.show', [$tenant, $invoice->getKey()])->with('status', "Invoice {$invoice->invoice_number} issued.");
     }

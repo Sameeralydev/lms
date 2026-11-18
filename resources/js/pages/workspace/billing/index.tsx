@@ -66,6 +66,7 @@ export default function BillingIndex({
         cancel_invoices: boolean;
         view_reports: boolean;
         view_payments: boolean;
+        view_lifecycle: boolean;
     };
 }) {
     const base = `/t/${tenant.slug}/billing`;
@@ -129,6 +130,16 @@ export default function BillingIndex({
                         href={`${base}/payments`}
                     >
                         Payments & collections
+                    </Link>
+                </div>
+            )}
+            {permissions.view_lifecycle && (
+                <div className="mb-4">
+                    <Link
+                        className="border-border text-text-secondary rounded-lg border px-4 py-2 font-medium"
+                        href={`${base}/lifecycle`}
+                    >
+                        Assignments & account lifecycle
                     </Link>
                 </div>
             )}
