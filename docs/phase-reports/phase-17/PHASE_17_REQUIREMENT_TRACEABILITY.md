@@ -79,6 +79,10 @@ Remaining functional policy/product work includes transfer/withdrawal proration,
 
 Current phase status: **PHASE 17 — DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS**.
 
+## Focused integration continuation (2026-11-18)
+
+The existing invoice report summary now emits currency-partitioned monetary aggregates and the billing report UI labels each amount with its currency. This closes the currency-mixing defect for the current invoice summary only; it does not complete the missing report catalog, record drill-down, or PDF workflow. Regression evidence: the Phase 17 isolated SQLite suite passed 11 tests / 293 assertions, including USD/EUR invoice summary separation. Billing database notifications now carry explicit tenant identity for future inbox integration, with a focused payload test; this remains database-only delivery and does not add a communications inbox or due/overdue reminder lifecycle. See `PHASE_17_18_CONTINUATION_HANDOFF.md` for fresh local check results and outstanding scope. Phase 17 remains **DEVELOPMENT IN PROGRESS | IMPLEMENTATION WORK REMAINS**.
+
 ## 2026-11-18 financial integration continuation
 
 This continuation adds a controlled payment-reversal lifecycle to the existing Phase 18 payment engine. Requests require a reason and idempotency key; review and execution are separate permissions and actors. Execution locks the payment and affected invoices, reverses only the net allocated amount after completed allocation refunds, clears the remaining unapplied balance, and marks the original payment reversed without editing or deleting its receipt, events, or allocations. Pending refunds and reversals block conflicting operations. The issued receipt stays available and is labeled void after reversal. New reversal events reconcile in the derived student statement.

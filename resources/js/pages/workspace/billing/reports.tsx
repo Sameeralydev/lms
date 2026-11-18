@@ -21,6 +21,7 @@ export default function BillingReports({
     tenant,
     filters,
     summary,
+    collections,
     aging,
     campuses,
     invoices,
@@ -37,11 +38,15 @@ export default function BillingReports({
     };
     summary: {
         invoice_count: number;
-        invoiced_total: string;
-        collected_total: string;
-        outstanding_total: string;
-        overdue_total: string;
+        currencies: {
+            currency: string;
+            invoiced_total: string;
+            collected_total: string;
+            outstanding_total: string;
+            overdue_total: string;
+        }[];
     };
+    collections: { currency: string; method: string; payment_count: number; net_confirmed_amount: string }[];
     aging: {
         currency: string;
         current: string;
@@ -168,22 +173,32 @@ export default function BillingReports({
                     value={summary.invoice_count.toLocaleString()}
                     detail="Matching records"
                 />
-                <MetricCard
-                    label="Invoiced"
-                    value={summary.invoiced_total}
-                    detail="Excludes cancelled invoices"
-                />
-                <MetricCard
-                    label="Collected"
-                    value={summary.collected_total}
-                    detail="Only confirmed allocations; Phase 18 integration"
-                />
-                <MetricCard
-                    label="Outstanding"
-                    value={summary.outstanding_total}
-                    detail="Open invoice balance"
-                />
-                <MetricCard label="Overdue" value={summary.overdue_total} detail="Past-due open balance" />
+                {summary.currencies.flatMap((row) => [
+                    <MetricCard
+                        key={`${row.currency}-invoiced`}
+                        label={`Invoiced (${row.currency})`}
+                        value={row.invoiced_total}
+                        detail="Excludes cancelled invoices"
+                    />,
+                    <MetricCard
+                        key={`${row.currency}-collected`}
+                        label={`Collected (${row.currency})`}
+                        value={row.collected_total}
+                        detail="Current confirmed net collections"
+                    />,
+                    <MetricCard
+                        key={`${row.currency}-outstanding`}
+                        label={`Outstanding (${row.currency})`}
+                        value={row.outstanding_total}
+                        detail="Open invoice balance"
+                    />,
+                    <MetricCard
+                        key={`${row.currency}-overdue`}
+                        label={`Overdue (${row.currency})`}
+                        value={row.overdue_total}
+                        detail="Past-due open balance"
+                    />,
+                ])}
             </div>
             <section className="bg-surface border-border mt-5 overflow-x-auto rounded-2xl border p-4">
                 <h2 className="text-text-primary font-semibold">Outstanding balance aging</h2>
@@ -222,6 +237,42 @@ export default function BillingReports({
                                     <td className="p-2">{row.days_31_60}</td>
                                     <td className="p-2">{row.days_61_90}</td>
                                     <td className="p-2">{row.days_over_90}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
+            </section>
+            <section className="bg-surface border-border mt-5 overflow-x-auto rounded-2xl border p-4">
+                <h2 className="text-text-primary font-semibold">Confirmed collections</h2>
+                <p className="text-text-secondary mt-1 text-sm">
+                    Confirmed payments less executed refunds. Pending or reversed payments are excluded;
+                    currencies remain separate.
+                </p>
+                {collections.length === 0 ? (
+                    <p className="text-text-secondary mt-3 text-sm">
+                        No confirmed collections match these filters.
+                    </p>
+                ) : (
+                    <table className="mt-3 w-full min-w-[520px] text-left text-sm">
+                        <thead>
+                            <tr>
+                                {['Currency', 'Method', 'Payments', 'Net collected'].map((heading) => (
+                                    <th className="p-2" key={heading}>
+                                        {heading}
+                                    </th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {collections.map((row) => (
+                                <tr className="border-border border-t" key={`${row.currency}-${row.method}`}>
+                                    <td className="p-2">{row.currency}</td>
+                                    <td className="p-2 capitalize">{row.method.replaceAll('_', ' ')}</td>
+                                    <td className="p-2">{row.payment_count.toLocaleString()}</td>
+                                    <td className="p-2">
+                                        {row.currency} {row.net_confirmed_amount}
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>

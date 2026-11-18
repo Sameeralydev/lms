@@ -186,7 +186,8 @@ final class BillingInvoiceIssuer
             foreach ($recipients as $recipient) {
                 $recipient->notify(new BillingActivityNotification('billing.invoice.issued', 'A new fee invoice is available.', [
                     'invoice_number' => (string) $invoice->invoice_number, 'amount_due' => (string) $invoice->outstanding_amount,
-                    'currency' => (string) $invoice->currency, 'due_on' => $invoice->due_on->toDateString(), 'tenant_slug' => (string) $membership->tenant->slug,
+                    'currency' => (string) $invoice->currency, 'due_on' => $invoice->due_on->toDateString(),
+                    'tenant_id' => (int) $membership->tenant_id, 'tenant_slug' => (string) $membership->tenant->slug,
                 ]));
             }
 

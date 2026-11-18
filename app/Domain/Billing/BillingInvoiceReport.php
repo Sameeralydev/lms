@@ -6,6 +6,7 @@ use App\Models\BillingInvoice;
 use App\Models\TenantMembership;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /** Tenant and campus scoped invoice reporting shared by the UI and export. */
 final class BillingInvoiceReport
@@ -40,26 +41,73 @@ final class BillingInvoiceReport
     }
 
     /** @param array{from?:string|null,to?:string|null,status?:string|null,campus_id?:int|null,search?:string|null} $filters
-     * @return array{invoice_count:int,invoiced_total:string,collected_total:string,outstanding_total:string,overdue_total:string}
+     * @return array{invoice_count:int,currencies:list<array{currency:string,invoiced_total:string,collected_total:string,outstanding_total:string,overdue_total:string}>}
      */
     public function summary(TenantMembership $membership, array $filters): array
     {
-        $row = $this->query($membership, $filters)->toBase()->selectRaw(
-            'COUNT(*) as invoice_count, '
+        $rows = $this->query($membership, $filters)->toBase()->selectRaw(
+            'currency, COUNT(*) as invoice_count, '
             .'ROUND(COALESCE(SUM(CASE WHEN status <> ? THEN total ELSE 0 END), 0), 2) as invoiced_total, '
             .'ROUND(COALESCE(SUM(paid_amount), 0), 2) as collected_total, '
             .'ROUND(COALESCE(SUM(outstanding_amount), 0), 2) as outstanding_total, '
             .'ROUND(COALESCE(SUM(CASE WHEN outstanding_amount > 0 AND due_on < ? AND status <> ? THEN outstanding_amount ELSE 0 END), 0), 2) as overdue_total',
             ['cancelled', now()->toDateString(), 'cancelled'],
-        )->first();
+        )->groupBy('currency')->orderBy('currency')->get();
 
         return [
-            'invoice_count' => (int) $row->invoice_count,
-            'invoiced_total' => self::decimal((string) $row->invoiced_total),
-            'collected_total' => self::decimal((string) $row->collected_total),
-            'outstanding_total' => self::decimal((string) $row->outstanding_total),
-            'overdue_total' => self::decimal((string) $row->overdue_total),
+            'invoice_count' => (int) $rows->sum('invoice_count'),
+            'currencies' => $rows->map(static fn (object $row): array => [
+                'currency' => (string) $row->currency,
+                'invoiced_total' => self::decimal((string) $row->invoiced_total),
+                'collected_total' => self::decimal((string) $row->collected_total),
+                'outstanding_total' => self::decimal((string) $row->outstanding_total),
+                'overdue_total' => self::decimal((string) $row->overdue_total),
+            ])->all(),
         ];
+    }
+
+    /** @param array{from?:string|null,to?:string|null,status?:string|null,campus_id?:int|null,search?:string|null} $filters
+     * @return list<array{currency:string,method:string,payment_count:int,net_confirmed_amount:string}>
+     */
+    public function confirmedCollections(TenantMembership $membership, array $filters): array
+    {
+        $query = DB::table('billing_payments as payments')
+            ->join('sis_students as students', function ($join): void {
+                $join->on('students.id', '=', 'payments.student_id')
+                    ->on('students.tenant_id', '=', 'payments.tenant_id')
+                    ->on('students.institution_id', '=', 'payments.institution_id');
+            })
+            ->where('payments.tenant_id', $membership->tenant_id)
+            ->where('payments.institution_id', $membership->institution_id)
+            ->where('payments.status', 'confirmed')
+            ->whereNotNull('payments.confirmed_at')
+            ->when($membership->campus_id !== null, fn ($builder) => $builder->where('payments.campus_id', $membership->campus_id))
+            ->when(($filters['campus_id'] ?? null) !== null, fn ($builder) => $builder->where('payments.campus_id', $filters['campus_id']))
+            ->when(($filters['from'] ?? null) !== null, fn ($builder) => $builder->whereDate('payments.confirmed_at', '>=', $filters['from']))
+            ->when(($filters['to'] ?? null) !== null, fn ($builder) => $builder->whereDate('payments.confirmed_at', '<=', $filters['to']));
+
+        if (($filters['search'] ?? null) !== null) {
+            $search = trim((string) $filters['search']);
+            $query->where(function ($nested) use ($search): void {
+                $nested->where('payments.payment_number', 'like', '%'.$search.'%')
+                    ->orWhere('students.student_number', 'like', '%'.$search.'%')
+                    ->orWhere('students.legal_first_name', 'like', '%'.$search.'%')
+                    ->orWhere('students.legal_last_name', 'like', '%'.$search.'%');
+            });
+        }
+
+        return $query->selectRaw(
+            'payments.currency, payments.method, COUNT(*) as payment_count, '
+            .'ROUND(SUM(payments.amount - COALESCE((SELECT SUM(refunds.amount) FROM billing_payment_refunds as refunds '
+            .'WHERE refunds.tenant_id = payments.tenant_id AND refunds.payment_id = payments.id AND refunds.status = ?), 0)), 2) as net_confirmed_amount',
+            ['refunded'],
+        )->groupBy('payments.currency', 'payments.method')->orderBy('payments.currency')->orderBy('payments.method')->get()
+            ->map(static fn (object $row): array => [
+                'currency' => (string) $row->currency,
+                'method' => (string) $row->method,
+                'payment_count' => (int) $row->payment_count,
+                'net_confirmed_amount' => self::decimal((string) $row->net_confirmed_amount),
+            ])->all();
     }
 
     /** @param array{from?:string|null,to?:string|null,status?:string|null,campus_id?:int|null,search?:string|null} $filters

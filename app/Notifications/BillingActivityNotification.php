@@ -19,9 +19,16 @@ final class BillingActivityNotification extends Notification
         return ['database'];
     }
 
-    /** @return array{type:string,message:string,details:array<string,int|string|null>} */
+    /** @return array{type:string,message:string,tenant_id:int|null,details:array<string,int|string|null>} */
     public function toDatabase(object $notifiable): array
     {
-        return ['type' => $this->event, 'message' => $this->message, 'details' => $this->details];
+        $tenantId = $this->details['tenant_id'] ?? null;
+
+        return [
+            'type' => $this->event,
+            'message' => $this->message,
+            'tenant_id' => is_int($tenantId) ? $tenantId : null,
+            'details' => $this->details,
+        ];
     }
 }

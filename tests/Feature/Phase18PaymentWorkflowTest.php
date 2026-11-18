@@ -51,6 +51,9 @@ final class Phase18PaymentWorkflowTest extends TestCase
         $this->actingAs($owner)->get("/t/{$tenant->slug}/billing/payments/{$paymentId}/receipt")->assertOk()->assertHeader('Content-Type', 'application/pdf');
         $this->assertDatabaseHas('audit_events', ['tenant_id' => $tenant->getKey(), 'event_type' => 'billing.payment.confirmed']);
         self::assertSame(1, \DB::table('notifications')->where('notifiable_type', User::class)->where('notifiable_id', $learner->getKey())->count(), 'Idempotent replay must not duplicate payment notifications.');
+        $this->actingAs($owner)->get("/t/{$tenant->slug}/billing/reports")->assertOk()->assertInertia(fn ($page) => $page
+            ->where('collections.0.currency', 'USD')->where('collections.0.method', 'cash')
+            ->where('collections.0.payment_count', 1)->where('collections.0.net_confirmed_amount', '60.00'));
         $this->actingAs($owner)->get("/t/{$tenant->slug}/billing/ledger/{$student->getKey()}")->assertOk()->assertInertia(fn ($page) => $page
             ->where('currency_totals.0.debit', '100.00')->where('currency_totals.0.credit', '60.00')->where('currency_totals.0.balance', '40.00'));
         $paymentId = (int) \DB::table('billing_payments')->where('tenant_id', $tenant->getKey())->value('id');
@@ -80,6 +83,7 @@ final class Phase18PaymentWorkflowTest extends TestCase
         self::assertSame('issued', $invoice->fresh()->status);
         self::assertSame('0.00', (string) $invoice->fresh()->paid_amount);
         self::assertNull(\DB::table('billing_payments')->where('id', $paymentId)->value('receipt_number'));
+        $this->actingAs($collector)->get("/t/{$tenant->slug}/billing/reports")->assertOk()->assertInertia(fn ($page) => $page->has('collections', 0));
 
         $verify = ['request_key' => 'verify-'.Str::uuid(), 'allocations' => [['invoice_id' => $invoice->getKey(), 'amount' => '50.00']]];
         $this->actingAs($collector)->post("{$base}/{$paymentId}/verify", $verify)->assertSessionHasErrors('payment');
@@ -161,6 +165,9 @@ final class Phase18PaymentWorkflowTest extends TestCase
         self::assertContains('billing.refund.requested', $notificationTypes);
         self::assertContains('billing.refund.approved', $notificationTypes);
         self::assertContains('billing.refund.executed', $notificationTypes);
+        $this->actingAs($executor)->get("/t/{$tenant->slug}/billing/reports")->assertOk()->assertInertia(fn ($page) => $page
+            ->where('collections.0.currency', 'USD')->where('collections.0.method', 'cash')
+            ->where('collections.0.payment_count', 1)->where('collections.0.net_confirmed_amount', '70.00'));
     }
 
     public function test_payment_reversal_uses_separate_review_and_execution_and_preserves_history(): void

@@ -133,6 +133,7 @@ final class BillingController extends Controller
             'tenant' => ['slug' => $tenant->slug],
             'filters' => $filters,
             'summary' => $reports->summary($membership, $filters),
+            'collections' => $reports->confirmedCollections($membership, $filters),
             'aging' => $reports->agingSummary($membership, $filters),
             'campuses' => Campus::query()->where('institution_id', $membership->institution_id)
                 ->when($membership->campus_id !== null, fn ($query) => $query->whereKey($membership->campus_id))

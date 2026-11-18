@@ -14,6 +14,7 @@ use App\Models\SisStudent;
 use App\Models\Tenant;
 use App\Models\TenantMembership;
 use App\Models\User;
+use App\Notifications\BillingActivityNotification;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\URL;
@@ -93,8 +94,25 @@ final class Phase17BillingFoundationTest extends TestCase
             'idempotency_key' => (string) Str::uuid(),
         ])->assertSessionHasNoErrors();
         $otherInvoice = BillingInvoice::query()->where('student_id', $otherStudent->getKey())->firstOrFail();
+        $this->actingAs($owner)->post("{$base}/fee-heads", ['code' => 'REGISTRATION', 'name' => 'Registration', 'category' => 'registration'])->assertSessionHasNoErrors();
+        $registrationHeadId = (int) \DB::table('billing_fee_heads')->where('tenant_id', $tenant->getKey())->where('code', 'REGISTRATION')->value('id');
+        $this->actingAs($owner)->post("{$base}/structures", [
+            'code' => 'EUR-REGISTRATION', 'name' => 'EUR registration', 'currency' => 'EUR', 'frequency' => 'one_time', 'effective_from' => '2026-01-01',
+            'items' => [['fee_head_id' => $registrationHeadId, 'unit_amount' => '10.00', 'quantity' => '1']],
+        ])->assertSessionHasNoErrors();
+        $eurStructureId = (int) \DB::table('billing_fee_structures')->where('tenant_id', $tenant->getKey())->where('code', 'EUR-REGISTRATION')->value('id');
+        $this->actingAs($owner)->post("{$base}/structures/{$eurStructureId}/activate")->assertSessionHasNoErrors();
+        $this->actingAs($owner)->post("{$base}/invoices", [
+            'student_id' => $otherStudent->getKey(), 'fee_structure_id' => $eurStructureId,
+            'period_start' => '2027-01-01', 'period_end' => '2027-01-31', 'due_on' => '2027-01-31',
+            'idempotency_key' => (string) Str::uuid(),
+        ])->assertSessionHasNoErrors();
+        $this->actingAs($owner)->get("{$base}/reports")->assertOk()->assertInertia(fn ($page) => $page
+            ->where('summary.invoice_count', 3)
+            ->where('summary.currencies.0.currency', 'EUR')->where('summary.currencies.0.invoiced_total', '10.00')
+            ->where('summary.currencies.1.currency', 'USD')->where('summary.currencies.1.invoiced_total', '505.00'));
         $this->actingAs($owner)->get("{$base}/reports?search=STU-17001")->assertOk()->assertInertia(fn ($page) => $page
-            ->component('workspace/billing/reports')->where('summary.invoice_count', 1)->where('summary.invoiced_total', '252.50')
+            ->component('workspace/billing/reports')->where('summary.invoice_count', 1)->where('summary.currencies.0.currency', 'USD')->where('summary.currencies.0.invoiced_total', '252.50')
             ->has('invoices.data', 1)->where('invoices.data.0.invoice_number', $invoice->invoice_number)
             ->where('aging.0.currency', 'USD')->where('aging.0.days_1_30', '252.50'));
         $csv = $this->actingAs($owner)->get("{$base}/reports.csv?search=STU-17001")->assertOk()->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
@@ -122,6 +140,19 @@ final class Phase17BillingFoundationTest extends TestCase
 
             self::fail("Invalid money value {$invalid} was accepted.");
         }
+    }
+
+    public function test_billing_notification_payload_contains_explicit_tenant_scope_for_inbox_consumers(): void
+    {
+        $notification = new BillingActivityNotification('billing.invoice.issued', 'Invoice issued.', [
+            'tenant_id' => 42, 'tenant_slug' => 'academy', 'invoice_number' => 'INV-TEST',
+        ]);
+
+        self::assertSame(['database'], $notification->via(new \stdClass));
+        self::assertSame([
+            'type' => 'billing.invoice.issued', 'message' => 'Invoice issued.', 'tenant_id' => 42,
+            'details' => ['tenant_id' => 42, 'tenant_slug' => 'academy', 'invoice_number' => 'INV-TEST'],
+        ], $notification->toDatabase(new \stdClass));
     }
 
     public function test_due_date_cannot_precede_billing_period_start(): void

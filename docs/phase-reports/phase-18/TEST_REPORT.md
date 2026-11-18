@@ -48,3 +48,6 @@ The six feature tests cover:
 - MySQL guarded test/ownership path, migration on a persistent database, concurrency, full Chromium, six-theme accessibility, Composer/npm audit, and hosted CI — NOT RUN.
 
 The runner used the isolated SQLite profile. This evidence does not establish MySQL behavior or production readiness.
+## Focused billing-report integration refresh — 2026-11-18
+
+The Phase 18 payment regression now exercises the shared billing reports page. Confirmed collection totals are grouped by currency and method, subtract executed refunds, and exclude pending transfers. Fresh command `php tests/run.php --phase=18 --profile=sqlite --no-report` passed **7 tests / 246 assertions**. This ran against the centralized isolated SQLite profile; it does not constitute MySQL/concurrency verification or browser acceptance.

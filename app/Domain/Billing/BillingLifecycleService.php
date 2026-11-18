@@ -461,7 +461,11 @@ final class BillingLifecycleService
                 ->where('can_view_financial_records', true)->whereNull('revoked_at')->with('guardian')->get()->pluck('guardian'),
         )->filter()->unique(fn (User $recipient): int => (int) $recipient->getKey());
         foreach ($recipients as $recipient) {
-            $recipient->notify(new BillingActivityNotification($event, $message, [...$details, 'tenant_slug' => (string) $this->context->tenant()->slug]));
+            $recipient->notify(new BillingActivityNotification($event, $message, [
+                ...$details,
+                'tenant_id' => (int) $this->context->tenant()->getKey(),
+                'tenant_slug' => (string) $this->context->tenant()->slug,
+            ]));
         }
     }
 
