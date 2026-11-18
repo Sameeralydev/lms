@@ -27,6 +27,7 @@ The cumulative branch contains manual cash and bank-transfer collection, payment
 ## Current continuation verification
 
 - `php tests/run.php --phase=17 --profile=sqlite --no-report` — PASS, 6 tests / 188 assertions; includes the lifecycle migration in isolated SQLite and assignment → concession → invoice → installments → adjustment → ledger behavior.
+- `php tests/run.php --phase=18 --profile=sqlite --no-report` — PASS, 6 tests / 140 assertions after the Phase 17 invoice-balance changes; payment allocation, refund reversal, guardian access and reconciliation tests all pass.
 - Focused PHPStan — PASS; focused Pint/PHP syntax — PASS.
 - `php artisan route:list --path=billing --except-vendor` — PASS, 40 routes.
 - `npm.cmd run typecheck`, focused ESLint and Prettier — PASS.

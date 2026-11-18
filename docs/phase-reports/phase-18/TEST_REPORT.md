@@ -31,3 +31,8 @@ The six feature tests cover:
 - Guarded Phase 18 MySQL, migrations/ownership postflight, and independent-session concurrency probes were not run; a verified Phase 18 target/ownership runner was unavailable in this continuation.
 - Composer/npm audits were not rerun in this focused continuation.
 - No real gateway, bank statement reconciliation, payout rail, external email/SMS, or human accessibility testing was performed.
+
+## Reverification after Phase 17 billing lifecycle changes
+
+- `php tests/run.php --phase=18 --profile=sqlite --no-report` — PASS, 6 tests / 140 assertions, exit 0. This fresh run exercised the existing payment, refund, guardian-consent and reconciliation workflows after adding adjusted invoice totals and ledger relationships.
+- This focused rerun did not execute MySQL, migrations against a persistent schema, browser tests, or the full Phase 18 static/frontend campaign.
