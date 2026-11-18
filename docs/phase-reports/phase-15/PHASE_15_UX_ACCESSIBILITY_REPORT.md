@@ -1,0 +1,34 @@
+# Phase 15 UX and accessibility report
+
+The academic analytics screen uses semantic headings/forms, labels, an enrollment chart with a tabular text alternative, theme tokens, and a responsive card layout. The authenticated Chromium test exercises all six registered themes, axe WCAG tags, theme persistence, keyboard focus, mobile overflow, export/filter actions, and a learner denial. One mobile overflow was found because the chart's min-content width expanded its grid item; applying `min-w-0` to the grid/cards fixed it.
+
+The first browser iteration found that the metrics select was controlled without an `onChange`; it was changed to an uncontrolled `defaultValue`, and the rerun passed. Historical scanner-enabled full Chromium evidence records **46/46**, but the full suite was not rerun in the 2026-11-13 continuation. The latest focused Phase 15 spec passed **2/2** and generated six screenshots in `test-results/phase15-analytics-theme-evidence/` for one analytics screen and an institution-owner fixture. This is not the requested full role-by-screen-by-theme matrix. Manual screen-reader/assistive-technology verification was not performed.
+
+Accessibility/browser regression update - 2026-11-16: the full Chromium run completed 42 passed, 3 failed, 1 skipped. The examination role/screen matrix test passed across the six registered themes. The dashboard theme persistence journey passed; responsive keyboard navigation, accessibility checks and quiz editor theme coverage also passed in completed cases. The academic-administration dashboard journey failed because its expected heading was absent. The evidence is not a complete role × screen × theme matrix; manual assistive-technology testing remains not performed.
+# Targeted accessible dashboard verification — 2026-11-16
+
+Fresh Playwright run `npm.cmd run test:e2e -- tests/e2e/frontend-audit.spec.ts --project=chromium --workers=1`: **3 passed**, exit 0. It verifies representative authorized role dashboard entry points, guardian attendance mobile navigation/reflow, and an institution-owner dashboard theme loop across six registered themes with persisted selection, axe WCAG checks, keyboard accessibility checks, and mobile overflow checks. Dashboard/theme screenshots produced by the test are under `docs/phase-reports/frontend-audit/screenshots/`.
+
+The role × screen × theme matrix remains incomplete. The run does not cover all ten role categories or all Phase15 screens for every theme. No manual assistive-technology or screen-reader assessment was performed.
+
+
+## Current verification status — 2026-11-17
+
+No full Chromium suite or complete authenticated role × screen × six-theme matrix was executed in this continuation. Existing targeted screenshots and browser results remain historical and must not be treated as comprehensive current coverage. The full Phase 15 UI matrix is **PARTIAL / NOT RUN**; manual screen-reader/assistive-technology review remains unperformed. Analytics and prior targeted theme tests are evidence only for the actual screens and roles exercised.
+## Fresh authenticated theme evidence — 2026-11-17
+
+- Dashboard matrix: **72/72** combinations, 12 supported roles × one dashboard screen × six registered themes. Every cell checks authenticated route, expected heading/navigation, theme persistence, axe tags, keyboard focus and mobile reflow; 72 screenshots plus `results.json` are in `test-results/phase15-role-dashboard-theme-matrix/`.
+- Examination matrix: **78/78** combinations across five roles and 13 applicable examination screens × six themes. Each cell checks expected Inertia component/tenant and persisted database content, theme persistence after reload, axe violations, mobile horizontal overflow, keyboard focus, and page errors. Screenshot and JSON evidence are attached to the Playwright test result.
+- Full authenticated scanner-enabled Chromium: **47 passed**. Manual screen-reader/assistive-technology verification was not performed.
+- These scoped matrices are not the complete role × every LMS screen × theme matrix; Phase 15 overall UI acceptance remains partial.
+## Latest accessibility/browser update � 2026-11-18
+
+Fresh role/theme evidence: dashboard matrix **72/72** and examination matrix **78/78**, with axe, keyboard/focus and mobile checks. Focused analytics after export-history UI passed **2/2** across its six themes. The full scanner-enabled Chromium run exited 1 (43 pass, four wait-timeout failures); affected cases passed in targeted reruns, but the complete suite has not yet had a single green rerun. Manual screen-reader testing was not performed. See [the latest closure addendum](PHASE_15_FINAL_CLOSURE_ADDENDUM_2026-11-18.md).
+
+## Report-builder implementation continuation — 2026-11-18
+
+Added a selectable measure to the curated report builder. Enrollment reports can compare enrollment records with distinct learners; finalized-attendance reports can compare marks with distinct learners. Other datasets expose only their semantically valid record count. Expressions are fixed server-side allowlist entries; user input cannot supply SQL or select an unsupported measure. The selected measure persists in membership-owned saved reports, applies identically to preview and CSV export, is included in export audit metadata, and labels the result column. Grouped results also render a responsive bar visualization backed by the current page; the accessible results table remains the text equivalent. Requested pages clamp to the last available page.
+
+Fresh evidence: `php tests/run.php --phase=15 --profile=sqlite --no-report` exited 0 with 16 passed / 382 assertions. Coverage verifies that distinct learner count differs from record count, invalid dataset/measure combinations return 422, saved measures reapply, CSV uses the matching aggregation and formula neutralization, and the attendance aggregation query is valid. `composer analyse`, focused Pint, TypeScript, ESLint, Prettier, Vitest (24 passed), and production build (697 modules) passed. Authenticated Phase 15 analytics Chromium passed 2/2 after rebuilding assets; the report control, empty state, export history, saved configuration, denial case and six-theme persistence/axe/mobile checks ran. Six screenshots are in `test-results/phase15-analytics-theme-evidence/`.
+
+Remaining report scope: only four curated source datasets are available; record-level drill-down, generated PDF, scheduled reports and a full Phase 01–14 catalog remain incomplete. A new read-only guarded MySQL preflight exited 1 because the previously owner-pinned server refused connection; no MySQL operation ran. Prior MySQL postflight and 8/8 concurrency results remain historical. The last full SQLite suite remains 382 passed / 6 failed / 4 skipped, with six ClamAV/EICAR cases still failing due host interception; the full cross-phase Chromium suite was not rerun after this focused change. Phase 15 remains PARTIAL / BLOCKED; Phase 16 was not started.
