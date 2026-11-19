@@ -44,7 +44,11 @@ const types = ['school', 'college', 'university', 'academy', 'corporate', 'onlin
     value,
     label: value[0].toUpperCase() + value.slice(1),
 }));
-export default function TenantCreate() {
+export default function TenantCreate({
+    ownerInvitationDeliveryAvailable,
+}: {
+    ownerInvitationDeliveryAvailable: boolean;
+}) {
     const form = useForm<Data>(blank);
     const field = (name: keyof Data, label: string, type = 'text') => (
         <TextField
@@ -69,6 +73,19 @@ export default function TenantCreate() {
                     form.post('/platform/tenants');
                 }}
             >
+                {!ownerInvitationDeliveryAvailable ? (
+                    <div
+                        className="border-border bg-canvas text-text-primary rounded-lg border p-4"
+                        role="status"
+                    >
+                        <p className="font-semibold">Owner invitation email is not configured</p>
+                        <p className="text-text-secondary mt-1 text-sm">
+                            Tenant provisioning is unavailable in this local environment until an SMTP
+                            provider or local mail-capture service is configured. No institution or invitation
+                            will be created while delivery is disabled.
+                        </p>
+                    </div>
+                ) : null}
                 <FormErrors />
                 <div className="grid gap-5 md:grid-cols-2">
                     {field('official_name', 'Official institution name')}
@@ -98,7 +115,11 @@ export default function TenantCreate() {
                         The owner creates or signs in to a global account through the signed invitation. The
                         platform operator does not receive institution membership.
                     </p>
-                    <Button type="submit" loading={form.processing}>
+                    <Button
+                        type="submit"
+                        loading={form.processing}
+                        disabled={!ownerInvitationDeliveryAvailable}
+                    >
                         Provision institution
                     </Button>
                 </div>

@@ -10,6 +10,7 @@ use App\Mail\TenantInvitationMail;
 use App\Models\AuditEvent;
 use App\Models\Institution;
 use App\Models\Tenant;
+use App\Models\TenantPlan;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -43,16 +44,17 @@ class TenantController extends Controller
         ]);
     }
 
-    public function create(): Response
+    public function create(Request $request): Response
     {
-        return Inertia::render('platform/tenants/create');
+        return Inertia::render('platform/tenants/create', [
+            'ownerInvitationDeliveryAvailable' => $this->canDeliverOwnerInvitation($request),
+        ]);
     }
 
     public function store(Request $request, TenantProvisioner $provisioner): RedirectResponse
     {
-        $mailIsTestFake = app()->runningUnitTests() && Mail::getFacadeRoot() instanceof MailFake;
-        $mailIsLocalE2e = app()->environment('testing') && config('app.e2e_test_mode') && in_array($request->ip(), ['127.0.0.1', '::1'], true);
-        abort_if(in_array(config('mail.default'), ['log', 'array'], true) && ! $mailIsTestFake && ! $mailIsLocalE2e, 503, 'Owner invitation delivery is disabled until a real mail transport is configured.');
+        $mailIsLocalE2e = $this->isLocalE2e($request);
+        abort_unless($this->canDeliverOwnerInvitation($request), 503, 'Owner invitation delivery is disabled until a real mail transport is configured.');
 
         $data = $request->validate([
             ...$this->institutionRules(),
@@ -76,6 +78,20 @@ class TenantController extends Controller
         return $response;
     }
 
+    private function canDeliverOwnerInvitation(Request $request): bool
+    {
+        $mailIsTestFake = app()->runningUnitTests() && Mail::getFacadeRoot() instanceof MailFake;
+
+        return ! in_array(config('mail.default'), ['log', 'array'], true) || $mailIsTestFake || $this->isLocalE2e($request);
+    }
+
+    private function isLocalE2e(Request $request): bool
+    {
+        return app()->environment('testing')
+            && config('app.e2e_test_mode')
+            && in_array($request->ip(), ['127.0.0.1', '::1'], true);
+    }
+
     public function show(Request $request, Tenant $tenant): Response
     {
         $institution = Institution::query()->withoutGlobalScope('tenant')->where('tenant_id', $tenant->getKey())->first();
@@ -93,7 +109,7 @@ class TenantController extends Controller
             'canManageStatus' => $tenant->status !== 'archived',
             'subscription' => $subscription ? ['status' => $subscription->status, 'startedAt' => $subscription->started_at, 'plan' => $subscription->plan] : null,
             'subscriptionEvents' => $subscription?->events()->latest('occurred_at')->limit(10)->get(['id', 'event_type', 'details', 'occurred_at']) ?? [],
-            'availablePlans' => $canManageSubscription ? \App\Models\TenantPlan::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'key']) : [],
+            'availablePlans' => $canManageSubscription ? TenantPlan::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'key']) : [],
             'canManageSubscription' => $canManageSubscription,
         ]);
     }

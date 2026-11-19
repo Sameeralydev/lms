@@ -68,6 +68,27 @@ class TenantManagementTest extends TestCase
         $this->assertDatabaseHas('roles', ['tenant_id' => $tenant->id, 'key' => 'student']);
     }
 
+    public function test_local_tenant_provisioning_explains_disabled_owner_invitation_delivery_and_makes_no_changes(): void
+    {
+        $operator = $this->platformSuperAdmin();
+        config(['mail.default' => 'log']);
+
+        $this->actingAs($operator)
+            ->get('/platform/tenants/create')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('platform/tenants/create')
+                ->where('ownerInvitationDeliveryAvailable', false));
+
+        $this->post('/platform/tenants', [
+            ...$this->institutionDetails('Local Mail Disabled Academy', 'local-mail-disabled-academy'),
+            'owner_email' => 'local-owner@example.test',
+        ])->assertServiceUnavailable();
+
+        $this->assertDatabaseMissing('tenants', ['slug' => 'local-mail-disabled-academy']);
+        $this->assertDatabaseMissing('tenant_invitations', ['email' => 'local-owner@example.test']);
+    }
+
     public function test_tenant_context_fails_closed_and_rejects_cross_tenant_writes(): void
     {
         $operator = User::factory()->create();
